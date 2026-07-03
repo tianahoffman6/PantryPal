@@ -96,6 +96,7 @@ app.post('/api/generate-recipe', auth, async (req, res) => {
     });
     const data = await response.json();
     if (!response.ok) console.error('Anthropic API error:', response.status, data);
+    else if (data.stop_reason && data.stop_reason !== 'end_turn') console.error('Anthropic response cut short:', data.stop_reason);
     res.status(response.status).json(data);
   } catch (e) {
     res.status(502).json({ error: 'Failed to reach Anthropic API' });
