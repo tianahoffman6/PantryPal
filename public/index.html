@@ -346,6 +346,7 @@ const CAT_KEYWORDS = {
 // ─── STORAGE / API ───────────────────────────────────────────────────────
 let authToken = localStorage.getItem('pp-token');
 
+let lastApiStatus=null;
 async function api(method,path,body){
   try{
     const res = await fetch('/api/'+path,{
@@ -354,8 +355,9 @@ async function api(method,path,body){
       ...(body!==undefined?{body:JSON.stringify(body)}:{})
     });
     if(res.status===401){ signOut(); return null; }
+    lastApiStatus=res.ok?null:res.status;
     return res.ok ? res.json() : null;
-  }catch(e){ console.error('API error:',path,e); return null; }
+  }catch(e){ console.error('API error:',path,e); lastApiStatus=null; return null; }
 }
 
 function signOut(){
@@ -444,7 +446,9 @@ let ui={
   editCatName:'', editCatEmoji:'', editCatColor:'',
   newStore:'', newCuisine:'', householdEdit:'',
   // auth
-  loginError:'', syncError:''
+  loginError:'', syncError:'', authMode:'login', signupError:'',
+  inviteCode:'', inviteExpires:'', invitingLoading:false,
+  credits:null, creditsLoaded:false, checkoutLoading:false, checkoutMessage:''
 };
 
 // ─── UTILS ────────────────────────────────────────────────────────────────
@@ -1019,17 +1023,32 @@ function renderSyncBanner(){
 }
 
 function renderLogin(){
+  const signup=ui.authMode==='signup';
   document.getElementById('app').innerHTML=
     '<div class="pp-login-wrap">'+
       '<div class="pp-login-card">'+
         '<div class="pp-logo" style="margin-bottom:4px;">pantry<span>pal</span></div>'+
-        '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:18px;">Household access — sign in to continue</p>'+
-        '<form data-form="login">'+
-          '<div class="field" style="margin-bottom:12px;"><label>Email</label><input type="email" id="login-email" autocomplete="email" required></div>'+
-          '<div class="field" style="margin-bottom:12px;"><label>Password</label><input type="password" id="login-password" autocomplete="current-password" required></div>'+
-          (ui.loginError?'<p style="color:var(--orange);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.loginError)+'</p>':'')+
-          '<button type="submit" class="btn btn-primary" style="width:100%;">Sign in</button>'+
-        '</form>'+
+        (signup?
+          '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:18px;">Sign up with your invite code</p>'+
+          '<form data-form="signup">'+
+            '<div class="field" style="margin-bottom:12px;"><label>Invite code</label><input type="text" id="signup-invite" required></div>'+
+            '<div class="field" style="margin-bottom:12px;"><label>Household name</label><input type="text" id="signup-family" placeholder="e.g. The Smiths"></div>'+
+            '<div class="field" style="margin-bottom:12px;"><label>Email</label><input type="email" id="signup-email" autocomplete="email" required></div>'+
+            '<div class="field" style="margin-bottom:12px;"><label>Password</label><input type="password" id="signup-password" autocomplete="new-password" required></div>'+
+            (ui.signupError?'<p style="color:var(--orange);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.signupError)+'</p>':'')+
+            '<button type="submit" class="btn btn-primary" style="width:100%;">Create account</button>'+
+          '</form>'+
+          '<button class="btn-ghost" data-action="set-auth-mode" data-val="login" style="width:100%;margin-top:10px;">Already have an account? Sign in</button>'
+        :
+          '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:18px;">Household access — sign in to continue</p>'+
+          '<form data-form="login">'+
+            '<div class="field" style="margin-bottom:12px;"><label>Email</label><input type="email" id="login-email" autocomplete="email" required></div>'+
+            '<div class="field" style="margin-bottom:12px;"><label>Password</label><input type="password" id="login-password" autocomplete="current-password" required></div>'+
+            (ui.loginError?'<p style="color:var(--orange);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.loginError)+'</p>':'')+
+            '<button type="submit" class="btn btn-primary" style="width:100%;">Sign in</button>'+
+          '</form>'+
+          '<button class="btn-ghost" data-action="set-auth-mode" data-val="signup" style="width:100%;margin-top:10px;">Have an invite code? Sign up</button>'
+        )+
       '</div>'+
     '</div>';
 }
@@ -1051,6 +1070,25 @@ async function submitLogin(){
   }
 }
 
+async function submitSignup(){
+  const inviteCode=document.getElementById('signup-invite').value.trim();
+  const familyName=document.getElementById('signup-family').value.trim();
+  const email=document.getElementById('signup-email').value;
+  const password=document.getElementById('signup-password').value;
+  ui.signupError='';
+  try{
+    const res=await fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inviteCode,familyName,email,password})});
+    const data=await res.json();
+    if(!res.ok){ ui.signupError=data.error||'Could not create account.'; renderLogin(); return; }
+    authToken=data.token;
+    localStorage.setItem('pp-token',authToken);
+    boot();
+  }catch(e){
+    ui.signupError='Could not connect — try again.';
+    renderLogin();
+  }
+}
+
 async function boot(){
   if(!authToken){ renderLogin(); return; }
   document.getElementById('app').innerHTML='<div class="pp-boot">Loading PantryPal…</div>';
@@ -1059,6 +1097,15 @@ async function boot(){
   if(!ok){
     document.getElementById('app').innerHTML='<div class="pp-boot">Couldn\'t load your data. <button class="btn btn-primary" data-action="retry-boot" style="margin-top:12px;">Retry</button></div>';
     return;
+  }
+  const checkoutParam=new URLSearchParams(window.location.search).get('checkout');
+  if(checkoutParam){
+    history.replaceState(null,'',window.location.pathname);
+    if(checkoutParam==='success'){
+      ui.settingsSection='family';
+      ui.checkoutMessage='Payment received — updating your balance…';
+      ui.creditsLoaded=false;
+    }
   }
   render();
 }
@@ -1907,7 +1954,7 @@ async function generateRecipeForMeal(){
   }catch(e){
     console.error(e);
     ui.cookingModal.generating=false;
-    ui.cookingModal.error='Couldn\'t generate a recipe right now. Try again.';
+    ui.cookingModal.error=lastApiStatus===402?'You\'re out of AI credits. Buy more in Settings → Family & Billing.':'Couldn\'t generate a recipe right now. Try again.';
   }
   renderCookingModal();
 }
@@ -1945,7 +1992,7 @@ async function generateRandomRecipes(){
   }catch(err){
     console.error('generateRandomRecipes error:', err);
     ui.generatingRandom=false;
-    ui.generateError='Couldn\'t generate recipes right now. Please try again.';
+    ui.generateError=lastApiStatus===402?'You\'re out of AI credits. Buy more in Settings → Family & Billing.':'Couldn\'t generate recipes right now. Please try again.';
   }
   render();
 }
@@ -2077,7 +2124,8 @@ function renderSettings(){
     {id:'categories',label:'Categories'},
     {id:'stores',label:'Stores'},
     {id:'cuisines',label:'Cuisines'},
-    {id:'household',label:'Household'}
+    {id:'household',label:'Household'},
+    {id:'family',label:'Family & Billing'}
   ];
   const nav=sections.map(s=>'<button class="pill-btn '+(ui.settingsSection===s.id?'active':'')+'" data-action="set-settings-section" data-val="'+s.id+'">'+s.label+'</button>').join('');
 
@@ -2086,6 +2134,7 @@ function renderSettings(){
   else if(ui.settingsSection==='stores') body=renderSettingsStores();
   else if(ui.settingsSection==='cuisines') body=renderSettingsCuisines();
   else if(ui.settingsSection==='household') body=renderSettingsHousehold();
+  else if(ui.settingsSection==='family') body=renderSettingsFamily();
 
   return '<div class="settings-nav">'+nav+'</div>'+body;
 }
@@ -2174,6 +2223,50 @@ function renderSettingsHousehold(){
     '</div>';
 }
 
+function renderSettingsFamily(){
+  if(!ui.creditsLoaded) loadCredits();
+  const creditsRow = ui.credits===null ? 'Unlimited' : (ui.credits+' recipe generation'+(ui.credits===1?'':'s')+' remaining');
+  return '<div class="settings-section-title">Family & Billing</div>'+
+    '<div class="form-card" style="margin-bottom:16px;">'+
+      '<div class="field" style="margin-bottom:14px;"><label>Invite a family member</label>'+
+        '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">Generate a code so someone else can sign in to your household\'s shared data.</p>'+
+        '<button class="btn btn-primary" data-action="generate-invite" '+(ui.invitingLoading?'disabled':'')+'>'+(ui.invitingLoading?'Generating…':'Generate invite code')+'</button>'+
+        (ui.inviteCode?'<div class="form-card" style="margin-top:12px;background:var(--bg);"><code style="font-size:15px;font-weight:800;">'+h(ui.inviteCode)+'</code>'+
+          '<p style="color:var(--ink-soft);font-size:12px;margin-top:6px;">Expires '+h(new Date(ui.inviteExpires).toLocaleDateString())+'. Share this code — they\'ll enter it on the sign-up screen.</p></div>':'')+
+      '</div>'+
+    '</div>'+
+    '<div class="form-card">'+
+      '<div class="field">'+
+        '<label>AI recipe generation credits</label>'+
+        '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">'+h(creditsRow)+'</p>'+
+        (ui.credits!==null?'<button class="btn btn-secondary" data-action="buy-credits" '+(ui.checkoutLoading?'disabled':'')+'>'+(ui.checkoutLoading?'Redirecting…':'Buy 50 credits — $5')+'</button>':'')+
+        (ui.checkoutMessage?'<p style="color:var(--green);font-size:13px;font-weight:700;margin-top:10px;">'+h(ui.checkoutMessage)+'</p>':'')+
+      '</div>'+
+    '</div>';
+}
+
+async function loadCredits(){
+  ui.creditsLoaded=true;
+  const data=await api('GET','credits');
+  if(data){ ui.credits=data.credits; ui.checkoutMessage=''; }
+  render();
+}
+
+async function generateInvite(){
+  ui.invitingLoading=true;render();
+  const data=await api('POST','invites');
+  ui.invitingLoading=false;
+  if(data){ ui.inviteCode=data.code; ui.inviteExpires=data.expiresAt; }
+  render();
+}
+
+async function buyCredits(){
+  ui.checkoutLoading=true;render();
+  const data=await api('POST','checkout');
+  if(data && data.url){ window.location.href=data.url; return; }
+  ui.checkoutLoading=false;render();
+}
+
 // ─── API: FIND RECIPES ────────────────────────────────────────────────────
 async function findRecipes(){
   ui.recipeStatus='loading';ui.recipeError='';render();
@@ -2203,7 +2296,7 @@ async function findRecipes(){
     ui.recipes=recipes;ui.recipeStatus='done';
   }catch(err){
     console.error(err);ui.recipeStatus='error';
-    ui.recipeError='Could not fetch recipes. Check your filters and try again.';
+    ui.recipeError=lastApiStatus===402?'You\'re out of AI credits. Buy more in Settings → Family & Billing.':'Could not fetch recipes. Check your filters and try again.';
   }
   render();
 }
@@ -2401,6 +2494,9 @@ document.addEventListener('click',e=>{
     // auth
     case 'sign-out': signOut();break;
     case 'retry-boot': boot();break;
+    case 'set-auth-mode': ui.authMode=a.val;ui.loginError='';ui.signupError='';renderLogin();break;
+    case 'generate-invite': generateInvite();break;
+    case 'buy-credits': buyCredits();break;
   }
 });
 
@@ -2473,6 +2569,7 @@ document.addEventListener('submit',e=>{
   }
   else if(form.dataset.form==='add-cookbook'){addManualRecipe(fd);ui.browserShowAddForm=false;}
   else if(form.dataset.form==='login'){submitLogin();}
+  else if(form.dataset.form==='signup'){submitSignup();}
 });
 
 // ─── INIT ─────────────────────────────────────────────────────────────────
