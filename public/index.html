@@ -263,6 +263,14 @@ input::placeholder,textarea::placeholder{color:var(--ink-soft);}
 .alert-card.expiring .alert-card-label{color:var(--orange);}
 .alert-card.low-stock .alert-card-label{color:#7A5C1A;}
 .alert-card-body{font-size:13px;font-weight:700;color:var(--ink);}
+/* GETTING STARTED */
+.gs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;}
+.gs-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:16px;cursor:pointer;transition:box-shadow .12s,border-color .12s;text-align:left;}
+.gs-card:hover{box-shadow:var(--shadow);border-color:var(--green);}
+.gs-card-emoji{font-size:24px;margin-bottom:8px;}
+.gs-card-title{font-weight:900;font-size:14px;margin-bottom:3px;}
+.gs-card-desc{font-size:12.5px;color:var(--ink-soft);font-weight:600;line-height:1.4;}
+.gs-step{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--green-soft);color:var(--green);font-size:11px;font-weight:900;margin-bottom:8px;}
 /* COOKING MODAL */
 .cooking-overlay{position:fixed;inset:0;background:rgba(17,24,16,.65);z-index:600;display:flex;align-items:flex-end;justify-content:center;}
 .cooking-sheet{background:var(--card);border-radius:var(--r) var(--r) 0 0;width:100%;max-width:640px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 -4px 32px rgba(17,24,16,.2);}
@@ -438,7 +446,7 @@ let ui={
   cookFilters:{mealType:'Any',cuisine:'Any',customCuisine:'',maxTime:'any',preferHave:false,notes:''},
   recipeStatus:'idle', recipes:[], recipeError:'',
   // cookbook
-  cbSearch:'', cbMealFilter:'All', cbCanMake:false, showAddCookbook:false, expandedCbId:null,
+  cbSearch:'', cbMealFilter:'All', cbCanMake:false, cbFav:false, showAddCookbook:false, expandedCbId:null,
   // planner
   plannerWeekOffset:0, plannerModal:null, // {date,slot}
   plannerSearch:'', plannerShowCreate:false, plannerMealFilter:'All',
@@ -1613,10 +1621,18 @@ function renderRecipeCard(r,idx){
 
 // ─── RENDER: COOKBOOK ─────────────────────────────────────────────────────
 function cookbookFiltered(){
-  let books=state.cookbook;
-  if(ui.cbSearch)          books=books.filter(r=>r.title.toLowerCase().includes(ui.cbSearch.toLowerCase()));
+  let books=state.cookbook.slice();
+  if(ui.cbSearch){
+    const q=ui.cbSearch.toLowerCase();
+    books=books.filter(r=>r.title.toLowerCase().includes(q)
+      ||(r.cuisine&&r.cuisine.toLowerCase().includes(q))
+      ||(r.ingredients||[]).some(i=>(i.name||String(i)).toLowerCase().includes(q)));
+  }
   if(ui.cbMealFilter!=='All') books=books.filter(r=>r.mealType===ui.cbMealFilter);
   if(ui.cbCanMake)         books=books.filter(r=>{ const a=recipeAvailability(r); return !a||a.missing===0; });
+  if(ui.cbFav)             books=books.filter(r=>r.favorite);
+  // Favorites always float to the top
+  books.sort((a,b)=>(b.favorite?1:0)-(a.favorite?1:0));
   return books;
 }
 function renderCookbookCards(){
@@ -1647,6 +1663,7 @@ function renderCookbook(){
   const mealFilterBtns=['All',...MEAL_TYPES_FILTER.slice(1)].map(m=>
     '<button class="pill-btn '+(ui.cbMealFilter===m?'active':'')+'" data-action="set-cb-meal" data-val="'+m+'">'+m+'</button>').join('');
   const canMakeBtn='<button class="pill-btn '+(ui.cbCanMake?'active':'')+'" data-action="toggle-cb-can-make">✅ Can make now</button>';
+  const favBtn='<button class="pill-btn '+(ui.cbFav?'active':'')+'" data-action="toggle-cb-fav">⭐ Favorites</button>';
   return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">'+
     '<div style="font-family:\'Bitter\',serif;font-size:20px;font-weight:700;flex:1;">📖 Cookbook</div>'+
     '<button class="btn btn-secondary" data-action="open-add-cookbook">+ Add recipe</button>'+
@@ -1660,7 +1677,7 @@ function renderCookbook(){
       '<input id="cb-search-input" data-live="cb-search" value="'+h(ui.cbSearch)+'" placeholder="Search cookbook…">'+
     '</div>'+
   '</div>'+
-  '<div class="pill-filters" style="margin-bottom:16px;">'+mealFilterBtns+canMakeBtn+'</div>'+
+  '<div class="pill-filters" style="margin-bottom:16px;">'+mealFilterBtns+canMakeBtn+favBtn+'</div>'+
   (ui.showAddCookbook?renderAddCookbookForm():'')+
   '<div id="cookbook-cards">'+renderCookbookCards()+'</div>';
 }
@@ -1735,6 +1752,7 @@ function renderCbCard(r){
     '</div>'+
     ingSection+stepsSection+
     '<div class="cb-actions" style="flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">'+
+      '<button class="btn-icon" data-action="toggle-cb-fav-item" data-id="'+r.id+'" title="'+(r.favorite?'Remove from favorites':'Add to favorites')+'" style="'+(r.favorite?'color:var(--gold);border-color:var(--gold);':'color:var(--ink-soft);')+'">'+(r.favorite?'⭐':'☆')+'</button>'+
       '<button class="btn-icon" data-action="toggle-cb-expand" data-id="'+r.id+'">'+(expanded?'▲ Less':'▼ View')+'</button>'+
       addMissingBtn+
       '<button class="btn-icon" data-action="plan-from-cookbook" data-title="'+h(r.title)+'" style="color:var(--ink-soft);">📅 Plan</button>'+
@@ -1845,10 +1863,44 @@ function renderHome(){
     '</div>');
   }
 
+  const isFresh = state.inventory.length===0 && state.grocery.length===0 && Object.keys(state.planner||{}).length===0;
+
+  const gettingStarted = isFresh ? '<div style="margin-bottom:24px;">'+
+    '<div class="home-section-title">Welcome to PantryPal 🎉</div>'+
+    '<p style="color:var(--ink-soft);font-size:13.5px;font-weight:600;margin:-4px 0 14px;line-height:1.5;">Let\'s get your kitchen set up. Here\'s where to start:</p>'+
+    '<div class="gs-grid">'+
+      '<div class="gs-card" data-action="set-tab" data-tab="kitchen">'+
+        '<div class="gs-step">1</div>'+
+        '<div class="gs-card-emoji">🥕</div>'+
+        '<div class="gs-card-title">Stock your kitchen</div>'+
+        '<div class="gs-card-desc">Add what you already have so PantryPal knows what you can cook.</div>'+
+      '</div>'+
+      '<div class="gs-card" data-action="set-tab" data-tab="cook">'+
+        '<div class="gs-step">2</div>'+
+        '<div class="gs-card-emoji">✦</div>'+
+        '<div class="gs-card-title">Find a recipe</div>'+
+        '<div class="gs-card-desc">Browse hundreds of recipes or generate new ones with AI.</div>'+
+      '</div>'+
+      '<div class="gs-card" data-action="set-tab" data-tab="planner">'+
+        '<div class="gs-step">3</div>'+
+        '<div class="gs-card-emoji">🗓</div>'+
+        '<div class="gs-card-title">Plan your week</div>'+
+        '<div class="gs-card-desc">Drop recipes into breakfast, lunch, and dinner slots.</div>'+
+      '</div>'+
+      '<div class="gs-card" data-action="set-tab" data-tab="grocery">'+
+        '<div class="gs-step">4</div>'+
+        '<div class="gs-card-emoji">🛒</div>'+
+        '<div class="gs-card-title">Build a grocery list</div>'+
+        '<div class="gs-card-desc">Track what you need and add missing recipe ingredients in one tap.</div>'+
+      '</div>'+
+    '</div>'+
+  '</div>' : '';
+
   return '<div class="home-greeting">'+
     '<div class="home-greeting-name">'+greeting()+', '+h(name)+'! 👋</div>'+
     '<div class="home-greeting-date">'+dayFull+'</div>'+
   '</div>'+
+  gettingStarted+
   '<div style="margin-bottom:24px;">'+
     '<div class="home-section-title">Today\'s menu</div>'+
     '<div class="today-menu-grid">'+mealCards+'</div>'+
@@ -2438,6 +2490,8 @@ document.addEventListener('click',e=>{
     case 'delete-cookbook': if(confirm('Remove this recipe?')){deleteCookbookItem(a.id);}break;
     case 'set-cb-meal': ui.cbMealFilter=a.val;render();break;
     case 'toggle-cb-can-make': ui.cbCanMake=!ui.cbCanMake;render();break;
+    case 'toggle-cb-fav': ui.cbFav=!ui.cbFav;render();break;
+    case 'toggle-cb-fav-item':{const r=state.cookbook.find(x=>x.id===a.id);if(r){r.favorite=!r.favorite;saveCookbook();render();}}break;
     case 'add-cookbook-missing': addCookbookMissingToGrocery(a.id);break;
     case 'plan-from-cookbook':
       ui.tab='planner';
