@@ -1,0 +1,2047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PantryPal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bitter:wght@600;700&family=Nunito:wght@400;600;700;800;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F5F0E8; --card:#FDFAF5; --ink:#2C1F0E; --ink-soft:#9A8A78; --border:#E8DDD0;
+  --green:#3A6E32; --green-soft:#DCE8CE; --orange:#C4693A; --orange-soft:#F0D6C9;
+  --header:#111810; --gold:#C2941F; --gold-soft:#FCEFC7;
+  --r:14px; --shadow:0 2px 8px rgba(44,31,14,.09); --shadow-sm:0 1px 3px rgba(44,31,14,.07);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--ink);font-family:'Nunito',system-ui,sans-serif;min-height:100vh;}
+button,input,select,textarea{font-family:inherit;}
+:focus-visible{outline:2px solid var(--green);outline-offset:2px;}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+input::placeholder,textarea::placeholder{color:var(--ink-soft);}
+
+/* HEADER */
+.pp-header{background:var(--header);height:56px;padding:0 20px;display:flex;align-items:center;position:sticky;top:0;z-index:200;border-bottom:1px solid #222E20;}
+.pp-logo{font-family:'Bitter',Georgia,serif;font-size:21px;font-weight:700;color:#F0E8D8;letter-spacing:-.01em;}
+.pp-logo span{color:var(--green);}
+.pp-household{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.pp-household-name{font-size:12px;color:#9FBAA9;font-weight:700;}
+.pp-avatars{display:flex;}
+.pp-avatar{width:28px;height:28px;border-radius:50%;border:2px solid var(--header);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:#fff;flex-shrink:0;}
+.pp-avatar:not(:first-child){margin-left:-7px;}
+
+/* TABS */
+.pp-tabs{background:var(--card);border-bottom:2px solid var(--border);padding:0 16px;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;position:sticky;top:56px;z-index:190;}
+.pp-tabs::-webkit-scrollbar{display:none;}
+.pp-tab{font-family:'Nunito';font-weight:800;font-size:13px;padding:13px 14px 11px;border:none;background:none;cursor:pointer;color:var(--ink-soft);border-bottom:3px solid transparent;white-space:nowrap;margin-bottom:-2px;transition:color .15s,border-color .15s;}
+.pp-tab.active{color:var(--green);border-bottom-color:var(--green);}
+
+/* ALERT STRIP */
+.alert-strip{background:#FEFBF4;border-bottom:1px solid #EAD9B4;padding:9px 20px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+.alert-badge{font-size:11px;font-weight:900;padding:3px 10px;border-radius:14px;white-space:nowrap;}
+.alert-badge.expiring{background:var(--orange);color:#fff;}
+.alert-badge.low{background:var(--gold-soft);color:#7A5C1A;border:1px solid #E0CC90;}
+.alert-text{font-size:13px;color:#7A5F44;font-weight:600;margin-right:4px;}
+.alert-add-btn{font-size:12px;color:#fff;font-weight:800;background:var(--green);border:none;cursor:pointer;padding:5px 14px;border-radius:8px;white-space:nowrap;margin-left:auto;}
+
+/* CONTENT */
+.pp-content{max-width:1080px;margin:0 auto;padding:20px 18px 90px;}
+
+/* CARDS */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow-sm);}
+.card-lg{padding:18px;}
+.card-sm{padding:12px 16px;}
+
+/* BUTTONS */
+.btn{border:none;border-radius:10px;cursor:pointer;font-weight:800;font-size:13px;padding:9px 16px;white-space:nowrap;transition:filter .1s;}
+.btn:hover{filter:brightness(.95);}
+.btn-primary{background:var(--green);color:#fff;}
+.btn-secondary{background:var(--card);color:var(--ink);border:1px solid var(--border);}
+.btn-ghost{background:none;border:none;cursor:pointer;color:var(--ink-soft);font-size:13px;font-weight:700;padding:6px 10px;}
+.btn-ghost:hover{color:var(--ink);}
+.btn-icon{background:none;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:var(--ink-soft);font-size:13px;padding:5px 10px;font-weight:700;}
+.btn-icon:hover{border-color:var(--ink-soft);color:var(--ink);}
+
+/* FORMS */
+.form-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:16px;animation:fadeUp .15s ease;}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;}
+.field label{display:block;font-size:11px;color:var(--ink-soft);font-weight:800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px;}
+.field input,.field select,.field textarea{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:9px;background:#fff;font-size:13.5px;color:var(--ink);font-weight:600;}
+.field input:focus,.field select:focus{border-color:var(--green);outline:none;}
+.form-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;}
+
+/* TOOLBAR */
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+.search-box{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:9px 14px;flex:1;min-width:180px;box-shadow:var(--shadow-sm);}
+.search-box input{border:none;background:transparent;font-size:13.5px;font-weight:600;color:var(--ink);flex:1;min-width:0;}
+.search-box input:focus{outline:none;}
+.search-icon{color:var(--ink-soft);font-size:15px;flex-shrink:0;}
+.pill-filters{display:flex;gap:6px;flex-wrap:wrap;}
+.pill-btn{background:var(--card);border:1.5px solid var(--border);border-radius:20px;padding:5px 13px;font-size:12px;font-weight:700;cursor:pointer;color:var(--ink-soft);}
+.pill-btn.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+
+/* SHELF */
+.shelf{margin-bottom:20px;}
+.shelf-header{display:flex;align-items:center;gap:9px;margin-bottom:8px;}
+.shelf-tag{font-family:'Nunito';font-weight:900;font-size:12px;text-transform:uppercase;letter-spacing:.04em;padding:3px 11px;border-radius:20px;display:flex;align-items:center;gap:5px;}
+.shelf-count{font-size:12px;color:var(--ink-soft);font-weight:700;}
+
+/* KITCHEN ITEM ROW */
+.item-row{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-left:4px solid var(--border);border-radius:var(--r);padding:10px 12px;margin-bottom:7px;flex-wrap:wrap;transition:box-shadow .1s;}
+.item-row:hover{box-shadow:var(--shadow);}
+.item-emoji{font-size:18px;flex-shrink:0;}
+.item-main{flex:1;min-width:120px;}
+.item-name{font-weight:800;font-size:14px;}
+.item-meta{font-size:11.5px;color:var(--ink-soft);font-weight:600;margin-top:2px;}
+.low-badge{font-size:10px;font-weight:900;border:1.5px solid var(--orange);color:var(--orange);padding:1px 7px;border-radius:8px;margin-left:7px;vertical-align:middle;display:inline-block;transform:rotate(-3deg);}
+.qty-row{display:flex;align-items:center;gap:6px;}
+.qty-btn{width:26px;height:26px;border-radius:50%;border:1.5px solid var(--border);background:var(--bg);cursor:pointer;font-weight:900;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;}
+.qty-val{font-family:'JetBrains Mono';font-size:13px;font-weight:500;min-width:32px;text-align:center;}
+
+/* GROCERY ROWS */
+.g-section{margin-bottom:20px;}
+.g-row{display:flex;align-items:flex-start;gap:10px;background:var(--card);border:1px solid var(--border);border-left:4px solid var(--border);border-radius:var(--r);padding:10px 12px;margin-bottom:7px;}
+.g-row.done{opacity:.55;}
+.g-row.done .g-name{text-decoration:line-through;color:var(--ink-soft);}
+.check-circle{width:24px;height:24px;border-radius:50%;border:2.5px solid var(--green);background:#fff;cursor:pointer;flex-shrink:0;margin-top:1px;position:relative;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:transparent;transition:background .1s,color .1s;}
+.check-circle.checked{background:var(--green);color:#fff;}
+.g-main{flex:1;min-width:0;}
+.g-name{font-weight:800;font-size:14px;}
+.g-fields{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;}
+.g-input{padding:5px 9px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;background:#fff;color:var(--ink);}
+.g-input:focus{border-color:var(--green);outline:none;}
+.g-qty{width:80px;}
+.g-store{width:120px;}
+.cat-dot{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;padding:2px 9px;border-radius:10px;white-space:nowrap;margin-top:5px;}
+.cat-select{display:inline-block;font-size:11px;font-weight:800;padding:3px 8px;border-radius:10px;border:1.5px solid transparent;cursor:pointer;margin-top:5px;max-width:200px;font-family:'Nunito',inherit;transition:border-color .1s;}
+.cat-select:hover{border-color:rgba(0,0,0,.15);}
+.cat-select:focus{outline:2px solid var(--green);outline-offset:1px;}
+.g-note{font-size:11.5px;color:var(--ink-soft);font-weight:600;margin-top:3px;}
+.low-tag{font-size:10px;font-weight:900;color:var(--orange);border:1px solid var(--orange);padding:1px 7px;border-radius:8px;margin-left:6px;}
+
+/* GROCERY QUICK ADD */
+.g-quick-add{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:12px 16px;margin-bottom:16px;flex-wrap:wrap;box-shadow:var(--shadow-sm);}
+.g-quick-add input{flex:1;min-width:160px;border:none;background:transparent;font-size:14px;font-weight:700;color:var(--ink);}
+.g-quick-add input:focus{outline:none;}
+.cat-preview{font-size:12px;font-weight:800;padding:3px 10px;border-radius:10px;white-space:nowrap;}
+
+/* RECIPE CARDS */
+.recipe-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px;margin-top:16px;}
+.recipe-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:18px;box-shadow:var(--shadow-sm);animation:fadeUp .2s ease;}
+.recipe-card h3{font-family:'Bitter',Georgia,serif;font-size:18px;font-weight:700;margin-bottom:8px;line-height:1.2;}
+.recipe-badges{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+.badge{font-size:11px;font-weight:800;padding:3px 10px;border-radius:10px;}
+.badge-cuisine{background:var(--gold-soft);color:#8A6A12;}
+.badge-meal{background:var(--green-soft);color:#3F5536;}
+.recipe-meta{font-family:'JetBrains Mono';font-size:12px;color:var(--ink-soft);margin-bottom:12px;display:flex;gap:14px;flex-wrap:wrap;}
+.ing-list{list-style:none;margin-bottom:12px;}
+.ing-list li{display:flex;align-items:baseline;gap:7px;padding:4px 0;border-bottom:1px dashed var(--border);font-size:13px;}
+.ing-have{color:var(--green);font-weight:900;font-size:11px;}
+.ing-miss{color:var(--orange);font-weight:900;font-size:11px;}
+.recipe-steps{list-style:decimal;padding-left:18px;margin-bottom:14px;font-size:13px;line-height:1.6;}
+.recipe-steps li{margin-bottom:4px;}
+.uses-low{font-size:12px;color:var(--orange);font-weight:700;margin-bottom:8px;background:var(--orange-soft);padding:5px 10px;border-radius:8px;}
+.recipe-actions{display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:12px;}
+
+/* COOKBOOK CARD */
+.cb-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:16px;box-shadow:var(--shadow-sm);animation:fadeUp .2s ease;}
+.cb-card h3{font-family:'Bitter',Georgia,serif;font-size:16px;font-weight:700;margin-bottom:6px;}
+.cb-meta{font-size:12px;color:var(--ink-soft);font-weight:700;margin-bottom:10px;display:flex;gap:12px;flex-wrap:wrap;}
+.cb-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;}
+
+/* FILTERS BAR */
+.filters-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:18px;box-shadow:var(--shadow-sm);}
+.filter-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;}
+.filter-field{display:flex;flex-direction:column;gap:4px;min-width:130px;}
+.filter-field label{font-size:11px;font-weight:800;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;}
+.filter-field select,.filter-field input{padding:8px 12px;border:1.5px solid var(--border);border-radius:9px;background:#fff;font-size:13px;font-weight:700;color:var(--ink);}
+.filter-field select:focus,.filter-field input:focus{border-color:var(--green);outline:none;}
+.check-option{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:var(--ink-soft);cursor:pointer;margin-top:10px;}
+
+/* PLANNER */
+.planner-header{display:flex;align-items:center;gap:12px;margin-bottom:18px;}
+.planner-nav{width:36px;height:36px;border-radius:50%;background:var(--card);border:1.5px solid var(--border);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;color:var(--ink);}
+.planner-title{flex:1;text-align:center;}
+.planner-title h2{font-family:'Bitter',Georgia,serif;font-size:20px;font-weight:700;}
+.planner-title p{font-size:12px;color:var(--ink-soft);font-weight:700;margin-top:2px;}
+.planner-grid{display:flex;flex-direction:column;gap:10px;}
+.planner-day{background:var(--card);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow-sm);}
+.planner-day-header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#FDFAF5;border-bottom:1px solid var(--border);}
+.day-label{font-family:'Bitter',Georgia,serif;font-weight:700;font-size:15px;}
+.day-date{font-size:12px;color:var(--ink-soft);font-weight:700;}
+.today-chip{font-size:10px;font-weight:900;background:var(--green);color:#fff;padding:2px 8px;border-radius:8px;}
+.planner-slots{display:grid;grid-template-columns:repeat(3,1fr);}
+.planner-slot{padding:10px 12px;border-right:1px solid var(--border);min-height:76px;cursor:pointer;transition:background .1s;}
+.planner-slot:last-child{border-right:none;}
+.planner-slot:hover{background:#F7F3EC;}
+.slot-label{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);margin-bottom:5px;}
+.slot-add-btn{display:flex;align-items:center;justify-content:center;gap:5px;border:1.5px dashed var(--border);border-radius:8px;color:var(--ink-soft);font-size:11px;font-weight:800;padding:7px 4px;min-height:34px;margin-top:2px;transition:border-color .15s,color .15s;}
+.planner-slot:hover .slot-add-btn{border-color:var(--green);color:var(--green);}
+.slot-meal{font-size:13px;font-weight:700;color:var(--ink);line-height:1.35;}
+.slot-meal-meta{font-size:10px;color:var(--ink-soft);font-weight:700;margin-top:3px;}
+/* Recipe Browser */
+.recipe-browser-section{margin-top:32px;border-top:2px solid var(--border);padding-top:26px;}
+.recipe-browser-header{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap;}
+.recipe-browser-header h3{font-family:'Bitter',Georgia,serif;font-size:20px;font-weight:700;flex:1;margin:0;}
+.browser-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
+.browser-card-wrap{display:flex;flex-direction:column;}
+.browser-card{background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:11px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:border-color .1s,background .1s;}
+.browser-card:hover,.browser-card.active{border-color:var(--green);}
+.browser-card.active{border-radius:12px 12px 0 0;background:#FDFAF5;}
+.browser-card-name{font-weight:800;font-size:13.5px;line-height:1.3;flex:1;}
+.browser-card-meta{font-size:11.5px;color:var(--ink-soft);font-weight:700;margin-top:2px;}
+.browser-plan-btn{font-size:11px;font-weight:900;padding:5px 12px;border-radius:8px;border:1.5px solid var(--green);color:var(--green);background:transparent;cursor:pointer;white-space:nowrap;flex-shrink:0;}
+.browser-plan-btn.active{background:var(--green);color:#fff;}
+.slot-picker{padding:10px 14px;background:var(--green-soft);border:1.5px solid var(--green);border-top:none;border-radius:0 0 12px 12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.slot-pick-btn{font-size:10px;font-weight:900;padding:5px 10px;border-radius:6px;border:1px solid var(--green);background:#fff;color:#2C6E2E;cursor:pointer;white-space:nowrap;transition:background .1s;}
+.slot-pick-btn:hover{background:var(--green);color:#fff;}
+.slot-pick-btn.taken{opacity:.55;border-style:dashed;}
+
+/* PLANNER MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(17,24,16,.6);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px;}
+.modal-sheet{background:var(--card);border-radius:var(--r);width:100%;max-width:540px;max-height:88vh;overflow-y:auto;padding:22px;box-shadow:0 12px 40px rgba(17,24,16,.3);}
+.modal-title{font-family:'Bitter',Georgia,serif;font-size:20px;font-weight:700;margin-bottom:18px;}
+.modal-close{float:right;font-size:24px;background:none;border:none;cursor:pointer;color:var(--ink-soft);margin-top:-4px;line-height:1;}
+
+/* SETTINGS */
+.settings-nav{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:20px;}
+.settings-section-title{font-family:'Bitter',Georgia,serif;font-size:18px;font-weight:700;margin-bottom:12px;}
+.settings-row{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;}
+.settings-emoji{font-size:20px;flex-shrink:0;}
+.settings-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.settings-name{font-weight:800;flex:1;font-size:14px;}
+.settings-count{font-size:12px;color:var(--ink-soft);font-weight:700;}
+.color-swatches{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0;}
+.color-swatch{width:24px;height:24px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .1s;}
+.color-swatch:hover{transform:scale(1.15);}
+.color-swatch.selected{border-color:var(--ink);}
+
+/* STATUS */
+.status-card{padding:40px 20px;text-align:center;color:var(--ink-soft);font-size:14px;font-weight:700;border:1.5px dashed var(--border);border-radius:var(--r);background:var(--card);}
+.spinner{width:22px;height:22px;border:2.5px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px;}
+.error-card{background:var(--orange-soft);border:1px solid #E8C0AA;border-radius:var(--r);padding:14px 18px;font-size:14px;font-weight:700;color:var(--orange);}
+
+/* PRINT */
+.print-btn{background:var(--card);border:1.5px solid var(--border);border-radius:10px;padding:8px 14px;font-size:13px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+@media print{
+  .pp-header,.pp-tabs,.toolbar,.form-card,.g-quick-add,.modal-overlay{display:none!important;}
+  .pp-content{padding:0!important;}
+  .g-row{box-shadow:none!important;}
+}
+
+/* HOME DASHBOARD */
+.home-greeting{background:linear-gradient(135deg,var(--header) 0%,#2C4A28 100%);border-radius:var(--r);padding:24px 26px;color:#fff;margin-bottom:22px;box-shadow:var(--shadow);}
+.home-greeting-name{font-family:'Bitter',Georgia,serif;font-size:22px;font-weight:700;margin-bottom:3px;}
+.home-greeting-date{font-size:13px;color:rgba(255,255,255,.65);font-weight:700;}
+.home-section-title{font-family:'Bitter',Georgia,serif;font-size:18px;font-weight:700;margin-bottom:12px;}
+.today-menu-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px;}
+.today-meal-card{background:var(--card);border:1.5px solid var(--border);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:5px;transition:border-color .15s,box-shadow .15s;}
+.today-meal-card.has-meal{cursor:pointer;}
+.today-meal-card.has-meal:hover{border-color:var(--green);box-shadow:var(--shadow);}
+.today-meal-slot-label{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);}
+.today-meal-name{font-family:'Bitter',Georgia,serif;font-size:15px;font-weight:700;flex:1;line-height:1.3;}
+.today-meal-avail{font-size:11px;font-weight:700;}
+.today-meal-empty{font-size:13px;color:var(--ink-soft);font-weight:600;flex:1;}
+.today-cook-btn{margin-top:6px;display:flex;align-items:center;justify-content:center;gap:6px;background:var(--green);color:#fff;border:none;border-radius:8px;padding:8px;font-size:12px;font-weight:800;cursor:pointer;width:100%;}
+.today-plan-btn{margin-top:6px;display:flex;align-items:center;justify-content:center;gap:5px;background:none;color:var(--ink-soft);border:1.5px dashed var(--border);border-radius:8px;padding:8px;font-size:12px;font-weight:800;cursor:pointer;width:100%;}
+.alerts-grid{display:flex;flex-direction:column;gap:10px;}
+.alert-card{background:var(--card);border:1px solid var(--border);border-left:4px solid var(--border);border-radius:var(--r);padding:14px 16px;}
+.alert-card.use-today{border-left-color:var(--rust,var(--orange));}
+.alert-card.expiring{border-left-color:var(--orange);}
+.alert-card.low-stock{border-left-color:var(--gold);}
+.alert-card-label{font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;}
+.alert-card.use-today .alert-card-label{color:var(--orange);}
+.alert-card.expiring .alert-card-label{color:var(--orange);}
+.alert-card.low-stock .alert-card-label{color:#7A5C1A;}
+.alert-card-body{font-size:13px;font-weight:700;color:var(--ink);}
+/* COOKING MODAL */
+.cooking-overlay{position:fixed;inset:0;background:rgba(17,24,16,.65);z-index:600;display:flex;align-items:flex-end;justify-content:center;}
+.cooking-sheet{background:var(--card);border-radius:var(--r) var(--r) 0 0;width:100%;max-width:640px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 -4px 32px rgba(17,24,16,.2);}
+.cooking-header{padding:20px 22px 14px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.cooking-slot-label{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);margin-bottom:3px;}
+.cooking-title{font-family:'Bitter',Georgia,serif;font-size:22px;font-weight:700;margin-bottom:3px;}
+.cooking-meta-row{font-size:13px;color:var(--ink-soft);font-weight:700;display:flex;gap:14px;flex-wrap:wrap;}
+.cooking-body{padding:18px 22px;flex:1;overflow-y:auto;}
+.cooking-section-label{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);margin:18px 0 9px;}
+.cooking-section-label:first-child{margin-top:0;}
+.cook-ing-row{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px dashed var(--border);cursor:pointer;user-select:none;}
+.cook-ing-row:last-child{border-bottom:none;}
+.cook-check{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;transition:all .12s;}
+.cook-check.have{border-color:var(--green);color:var(--green);}
+.cook-check.done{background:var(--green);border-color:var(--green);color:#fff;}
+.cook-check.need{border-color:var(--orange);color:var(--orange);}
+.cook-ing-text{flex:1;font-size:14px;font-weight:700;transition:color .12s;}
+.cook-ing-text.done{text-decoration:line-through;color:var(--ink-soft);}
+.cook-ing-qty{font-size:12px;color:var(--ink-soft);font-weight:700;}
+.cook-step{display:flex;gap:13px;padding:10px 0;border-bottom:1px dashed var(--border);font-size:14px;line-height:1.55;}
+.cook-step:last-child{border-bottom:none;}
+.cook-step-num{font-family:'JetBrains Mono';font-size:13px;font-weight:700;color:var(--green);flex-shrink:0;width:22px;padding-top:1px;}
+.cooking-empty-state{text-align:center;padding:20px 0 24px;}
+.cooking-footer{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0;}
+@media(max-width:480px){
+  .pp-content{padding:14px 14px 80px;}
+  .planner-slots{grid-template-columns:1fr;}
+  .planner-slot{border-right:none;border-bottom:1px solid var(--border);}
+  .planner-slot:last-child{border-bottom:none;}
+  .recipe-grid{grid-template-columns:1fr;}
+  .today-menu-grid{grid-template-columns:1fr;}
+  .cooking-sheet{max-height:95vh;}
+  .browser-grid{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="modal-root"></div>
+<div id="cooking-modal-root"></div>
+<script>
+// ─── CONSTANTS ────────────────────────────────────────────────────────────
+const LOCATIONS = ['Fridge','Freezer','Pantry','Counter'];
+const MEAL_TYPES_FILTER = ['Any','Breakfast','Lunch','Dinner','Snack'];
+const CUISINES = ['Any','Italian','Mexican','Indian','Chinese','Japanese','Thai','Vietnamese','Korean','Mediterranean','Middle Eastern','French','American','Greek','Spanish','Other'];
+const MEAL_SLOTS = ['Breakfast','Lunch','Dinner'];
+const SWATCH_COLORS = ['#4F7042','#C2941F','#A23E1C','#8B6914','#2E5A6B','#5A3A7A','#7A3A52','#295C52','#5A5A37','#8C4E14','#6B7160','#3A6E32'];
+const AVATAR_COLORS = ['#4A7C3E','#C4693A','#2E5A6B','#7A3A52','#C2941F','#5A3A7A'];
+const UNIT_LIST = ['pcs','g','kg','oz','lb','ml','l','cups','tbsp','tsp','cans','jars','boxes','bags','bunches','cloves'];
+const TIME_OPTIONS = [{v:'any',l:'Any time'},{v:'15',l:'≤15 min'},{v:'30',l:'≤30 min'},{v:'45',l:'≤45 min'},{v:'60',l:'≤1 hour'},{v:'90',l:'≤90 min'}];
+
+const DEFAULT_CATEGORIES = [
+  {id:'produce',name:'Produce',emoji:'🥦',color:'#4F7042',bg:'#DCE8CE'},
+  {id:'dairy',name:'Dairy & Eggs',emoji:'🥛',color:'#C2941F',bg:'#FCEFC7'},
+  {id:'meat',name:'Meat & Seafood',emoji:'🥩',color:'#A23E1C',bg:'#F0D6C9'},
+  {id:'grains',name:'Grains & Bread',emoji:'🍞',color:'#8B6914',bg:'#EDE0C0'},
+  {id:'pantry',name:'Pantry & Dry Goods',emoji:'🫙',color:'#7A5C10',bg:'#E9D9A8'},
+  {id:'canned',name:'Canned & Jarred',emoji:'🥫',color:'#5A5A37',bg:'#DCD9BD'},
+  {id:'condiments',name:'Condiments & Sauces',emoji:'🫒',color:'#7A3A52',bg:'#E8D3DA'},
+  {id:'spices',name:'Spices & Seasonings',emoji:'🧂',color:'#8C4E14',bg:'#F3D9BF'},
+  {id:'frozen',name:'Frozen',emoji:'🧊',color:'#2E5A6B',bg:'#D7E6EC'},
+  {id:'snacks',name:'Snacks',emoji:'🍿',color:'#5A3A7A',bg:'#E6D7EE'},
+  {id:'beverages',name:'Beverages',emoji:'🧃',color:'#295C52',bg:'#CFE6E2'},
+  {id:'other',name:'Other',emoji:'📦',color:'#6B7160',bg:'#E2DCCB'}
+];
+
+const CAT_KEYWORDS = {
+  'Produce':['apple','banana','orange','lemon','lime','grape','berry','strawberry','blueberry','raspberry','melon','watermelon','mango','pear','peach','plum','kiwi','avocado','tomato','potato','onion','garlic','carrot','celery','broccoli','cauliflower','spinach','lettuce','kale','cabbage','cucumber','bell pepper','pepper','zucchini','squash','mushroom','basil','cilantro','parsley','ginger','green onion','scallion','asparagus','corn','beet','radish','herb'],
+  'Dairy & Eggs':['milk','cheese','yogurt','yoghurt','butter','cream cheese','sour cream','cottage cheese','mozzarella','cheddar','parmesan','egg','eggs','half and half','buttermilk','cream','brie','feta'],
+  'Meat & Seafood':['chicken','beef','pork','turkey','lamb','bacon','sausage','ham','steak','ground beef','mince','fish','salmon','tuna','shrimp','prawn','crab','lobster','cod','tilapia','meat','deli'],
+  'Grains & Bread':['bread','bagel','tortilla','pasta','noodle','rice','oats','oatmeal','cereal','flour','bun','roll','pita','naan','muffin','baguette','quinoa','couscous','barley'],
+  'Snacks':['chips','crackers','popcorn','pretzel','granola bar','cookie','candy','chocolate bar','trail mix','nuts mix'],
+  'Beverages':['juice','soda','pop','sparkling water','coffee','tea','beer','wine','kombucha','energy drink','lemonade','coconut water'],
+  'Condiments & Sauces':['ketchup','mustard','mayo','mayonnaise','soy sauce','hot sauce','bbq sauce','ranch','dressing','sriracha','teriyaki','worcestershire','hoisin'],
+  'Spices & Seasonings':['cinnamon','cumin','paprika','oregano','thyme','chili powder','curry powder','nutmeg','vanilla extract','bay leaf','black pepper','peppercorn','salt','seasoning','spice'],
+  'Canned & Jarred':['canned','can of','jarred','salsa','pickle','pickles','olives','broth','stock','tinned','sauce in jar'],
+  'Pantry & Dry Goods':['sugar','baking powder','baking soda','yeast','lentil','beans','chickpea','peanut','almond','cashew','walnut','honey','syrup','olive oil','vegetable oil','vinegar','breadcrumbs','panko'],
+  'Frozen':['frozen','ice cream','popsicle','frost']
+};
+
+// ─── STORAGE ─────────────────────────────────────────────────────────────
+function lsGet(k,def){try{const v=localStorage.getItem('pp_'+k);return v===null?def:JSON.parse(v);}catch{return def;}}
+function lsSave(k,v){try{localStorage.setItem('pp_'+k,JSON.stringify(v));}catch(e){console.error('save failed',e);}}
+
+function defaultSettings(){
+  return {householdName:'Tiana & Baltej',members:['T','B'],categories:DEFAULT_CATEGORIES.map(c=>({...c})),stores:[],cuisines:['Italian','Mexican','Indian','Chinese','Japanese','Thai','Korean','Mediterranean','French','American','Greek','Other']};
+}
+
+let state={
+  inventory:[],grocery:[],cookbook:[],planner:{},settings:{}
+};
+
+function loadState(){
+  state.inventory = lsGet('inventory',[]);
+  state.grocery   = lsGet('grocery',[]);
+  state.cookbook  = lsGet('cookbook',[]);
+  state.planner   = lsGet('planner',{});
+  state.settings  = lsGet('settings', defaultSettings());
+  // back-fill any missing settings keys
+  if(!state.settings.categories) state.settings.categories = DEFAULT_CATEGORIES.map(c=>({...c}));
+  if(!state.settings.stores)     state.settings.stores = [];
+  if(!state.settings.cuisines)   state.settings.cuisines = defaultSettings().cuisines;
+  if(!state.settings.members)    state.settings.members = ['T','B'];
+  // pre-seed cookbook on first install
+  if(state.cookbook.length===0){
+    state.cookbook = SEED_RECIPES.map(r=>({...r}));
+    saveCookbook();
+  }
+}
+function saveInv(){lsSave('inventory',state.inventory);}
+function saveGrocery(){lsSave('grocery',state.grocery);}
+function saveCookbook(){lsSave('cookbook',state.cookbook);}
+function savePlanner(){lsSave('planner',state.planner);}
+function saveSettings(){lsSave('settings',state.settings);}
+
+// ─── UI STATE ─────────────────────────────────────────────────────────────
+let ui={
+  tab:'home',
+  // cooking mode
+  cookingModal:null, // {date,slot,meal,checklist:{},generating:false,generatedRecipe:null,error:''}
+  // kitchen
+  kitchenSearch:'', kitchenLoc:'All', kitchenCat:'All', kitchenExpiry:'all',
+  showAddItem:false, editingItemId:null,
+  // grocery
+  grocerySearch:'', groceryGroup:'category', groceryStore:'All', showChecked:false,
+  showAddGrocery:false, groceryQuickCat:'Other', groceryQuickCatBg:'#E2DCCB', groceryQuickCatColor:'#6B7160', groceryQuickEmoji:'📦',
+  // cook
+  cookFilters:{mealType:'Any',cuisine:'Any',customCuisine:'',maxTime:'any',preferHave:false,notes:''},
+  recipeStatus:'idle', recipes:[], recipeError:'',
+  // cookbook
+  cbSearch:'', cbMealFilter:'All', cbCanMake:false, showAddCookbook:false, expandedCbId:null,
+  // planner
+  plannerWeekOffset:0, plannerModal:null, // {date,slot}
+  plannerSearch:'', plannerShowCreate:false, plannerMealFilter:'All',
+  // recipe browser (within planner tab)
+  browserSearch:'', browserMealFilter:'All', browserPlanTitle:null,
+  browserShowAddForm:false, generatingRandom:false, generateError:'',
+  // settings
+  settingsSection:'categories', editCatId:null, showAddCat:false,
+  newCatName:'', newCatEmoji:'🍽', newCatColor:'#4F7042',
+  editCatName:'', editCatEmoji:'', editCatColor:'',
+  newStore:'', newCuisine:'', householdEdit:''
+};
+
+// ─── UTILS ────────────────────────────────────────────────────────────────
+function uid(){return crypto.randomUUID? crypto.randomUUID():'id-'+Date.now()+'-'+Math.random().toString(36).slice(2);}
+function h(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function isLow(item){return Number(item.quantity)<=Number(item.threshold);}
+function getCat(name){
+  return state.settings.categories.find(c=>c.name===name)||state.settings.categories.find(c=>c.id==='other')||DEFAULT_CATEGORIES[DEFAULT_CATEGORIES.length-1];
+}
+function guessCategory(name){
+  const n=(name||'').toLowerCase();
+  if(!n.trim()) return 'Other';
+  for(const cat of Object.keys(CAT_KEYWORDS)){if(CAT_KEYWORDS[cat].some(w=>n.includes(w))) return cat;}
+  return 'Other';
+}
+function expiryLabel(dateStr){
+  if(!dateStr) return '';
+  const d=new Date(dateStr+'T00:00:00');
+  const today=new Date(); today.setHours(0,0,0,0);
+  const diff=Math.round((d-today)/86400000);
+  if(diff<0) return '⚠ expired';
+  if(diff===0) return '⏰ expires today';
+  if(diff===1) return '⏰ tomorrow';
+  if(diff<=5) return '⏰ '+diff+'d left';
+  return d.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+}
+function isExpiring(item){
+  if(!item.expiresOn) return false;
+  const d=new Date(item.expiresOn+'T00:00:00');
+  const today=new Date(); today.setHours(0,0,0,0);
+  const diff=Math.round((d-today)/86400000);
+  return diff<=3;
+}
+function getWeekStart(offset){
+  const d=new Date(); d.setHours(0,0,0,0);
+  const day=d.getDay(); const monday=day===0?-6:1-day;
+  d.setDate(d.getDate()+monday+offset*7);
+  return d;
+}
+function dateKey(d){return d.toISOString().slice(0,10);}
+function avatarColor(letter){const i=letter.charCodeAt(0)%AVATAR_COLORS.length;return AVATAR_COLORS[i];}
+
+// ─── ACTIONS: INVENTORY ───────────────────────────────────────────────────
+function addOrUpdateItem(fd){
+  const name=(fd.get('name')||'').trim(); if(!name) return;
+  const item={id:ui.editingItemId||uid(),name,
+    category:fd.get('category'),location:fd.get('location'),
+    quantity:parseFloat(fd.get('quantity'))||0,unit:(fd.get('unit')||'').trim(),
+    threshold:parseFloat(fd.get('threshold'))||0,expiresOn:fd.get('expiresOn')||''};
+  if(ui.editingItemId){const i=state.inventory.findIndex(x=>x.id===ui.editingItemId);if(i>-1)state.inventory[i]=item;}
+  else state.inventory.push(item);
+  ui.showAddItem=false;ui.editingItemId=null;saveInv();render();
+}
+function deleteItem(id){state.inventory=state.inventory.filter(i=>i.id!==id);saveInv();render();}
+function adjustQty(id,delta){
+  const item=state.inventory.find(i=>i.id===id);if(!item)return;
+  item.quantity=Math.max(0,(Number(item.quantity)||0)+delta);saveInv();render();
+}
+
+// ─── ACTIONS: GROCERY ─────────────────────────────────────────────────────
+function addGroceryItem(name,category,note,fromLowStock,quantity,store){
+  if(!name.trim()) return false;
+  const dup=state.grocery.some(g=>!g.checked&&g.name.toLowerCase()===name.toLowerCase());
+  if(dup) return false;
+  state.grocery.push({id:uid(),name:name.trim(),category:category||'Other',note:note||'',
+    checked:false,fromLowStock:!!fromLowStock,quantity:quantity||'',store:store||''});
+  saveGrocery();return true;
+}
+function toggleChecked(id){const g=state.grocery.find(x=>x.id===id);if(g){g.checked=!g.checked;saveGrocery();render();}}
+function deleteGrocery(id){state.grocery=state.grocery.filter(g=>g.id!==id);saveGrocery();render();}
+function clearChecked(){state.grocery=state.grocery.filter(g=>!g.checked);saveGrocery();render();}
+function addAllLowStock(){
+  // Add both use-soon (expiring) and low-stock items to the grocery list
+  const toAdd=[...state.inventory.filter(isExpiring),...state.inventory.filter(i=>isLow(i)&&!isExpiring(i))];
+  let added=0;
+  toAdd.forEach(i=>{ if(addGroceryItem(i.name,i.category,'',true)) added++; });
+  saveGrocery();
+  ui.tab='grocery';
+  render();
+}
+function updateGroceryField(id,field,value){const g=state.grocery.find(x=>x.id===id);if(g){g[field]=value;saveGrocery();}}
+
+// ─── ACTIONS: COOKBOOK ────────────────────────────────────────────────────
+function saveRecipe(recipe){
+  const dup=state.cookbook.some(r=>r.title.toLowerCase()===recipe.title.toLowerCase());
+  if(!dup){state.cookbook.unshift({...recipe,id:uid(),dateAdded:new Date().toISOString()});saveCookbook();}
+}
+function deleteCookbookItem(id){state.cookbook=state.cookbook.filter(r=>r.id!==id);saveCookbook();render();}
+function addManualRecipe(fd){
+  const title=(fd.get('title')||'').trim(); if(!title) return;
+  const ingredients=(fd.get('ingredients')||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>({name:l,quantity:'',have:false}));
+  const steps=(fd.get('steps')||'').split('\n').map(l=>l.trim()).filter(Boolean);
+  const recipe={id:uid(),title,cuisine:fd.get('cuisine'),mealType:fd.get('mealType'),
+    totalTimeMinutes:parseInt(fd.get('time'))||0,servings:parseInt(fd.get('servings'))||4,
+    ingredients,steps,missingIngredients:[],usesLowStock:[],tags:[],dateAdded:new Date().toISOString()};
+  state.cookbook.unshift(recipe);saveCookbook();ui.showAddCookbook=false;render();
+}
+function addMissingToGrocery(idx){
+  const r=ui.recipes[idx];if(!r)return;
+  (r.missingIngredients||[]).forEach(n=>addGroceryItem(n,'Other','',false));saveGrocery();render();
+}
+
+// ─── ACTIONS: PLANNER ─────────────────────────────────────────────────────
+function getPlannerDay(dateStr){return state.planner[dateStr]||(state.planner[dateStr]={breakfast:'',lunch:'',dinner:''});}
+function setPlannerMeal(dateStr,slot,title){
+  getPlannerDay(dateStr)[slot.toLowerCase()]=title;savePlanner();ui.plannerModal=null;render();
+}
+function clearPlannerMeal(dateStr,slot){
+  getPlannerDay(dateStr)[slot.toLowerCase()]='';savePlanner();render();
+}
+function addWeekMissingToGrocery(){
+  const ws=getWeekStart(ui.plannerWeekOffset);
+  for(let i=0;i<7;i++){
+    const d=new Date(ws);d.setDate(d.getDate()+i);
+    const key=dateKey(d);const day=state.planner[key];if(!day)continue;
+    MEAL_SLOTS.forEach(slot=>{
+      const mealTitle=day[slot.toLowerCase()];if(!mealTitle)return;
+      const cbRecipe=state.cookbook.find(r=>r.title.toLowerCase()===mealTitle.toLowerCase());
+      if(cbRecipe)(cbRecipe.missingIngredients||[]).forEach(n=>addGroceryItem(n,'Other','',false));
+    });
+  }
+  saveGrocery();render();ui.tab='grocery';render();
+}
+
+// ─── ACTIONS: SETTINGS ────────────────────────────────────────────────────
+function addCategory(){
+  const name=ui.newCatName.trim();if(!name)return;
+  state.settings.categories.push({id:uid(),name,emoji:ui.newCatEmoji,color:ui.newCatColor,
+    bg:ui.newCatColor+'22'});
+  saveSettings();ui.showAddCat=false;ui.newCatName='';ui.newCatEmoji='🍽';render();
+}
+function saveEditCat(){
+  const cat=state.settings.categories.find(c=>c.id===ui.editCatId);if(!cat)return;
+  cat.name=ui.editCatName;cat.emoji=ui.editCatEmoji;cat.color=ui.editCatColor;cat.bg=ui.editCatColor+'22';
+  saveSettings();ui.editCatId=null;render();
+}
+function deleteCategory(id){
+  state.settings.categories=state.settings.categories.filter(c=>c.id!==id);saveSettings();render();
+}
+function addStore(){const s=ui.newStore.trim();if(s&&!state.settings.stores.includes(s)){state.settings.stores.push(s);saveSettings();ui.newStore='';render();}}
+function removeStore(s){state.settings.stores=state.settings.stores.filter(x=>x!==s);saveSettings();render();}
+function addCuisine(){const c=ui.newCuisine.trim();if(c&&!state.settings.cuisines.includes(c)){state.settings.cuisines.push(c);saveSettings();ui.newCuisine='';render();}}
+function removeCuisine(c){state.settings.cuisines=state.settings.cuisines.filter(x=>x!==c);saveSettings();render();}
+function saveHousehold(){state.settings.householdName=ui.householdEdit.trim()||state.settings.householdName;saveSettings();render();}
+
+// ─── KNOWN STORES ─────────────────────────────────────────────────────────
+function knownStores(){
+  const fromGrocery=[...new Set(state.grocery.map(g=>(g.store||'').trim()).filter(Boolean))];
+  const fromSettings=state.settings.stores||[];
+  return [...new Set([...fromSettings,...fromGrocery])].sort();
+}
+
+// ─── SEED RECIPES ─────────────────────────────────────────────────────────
+const SEED_RECIPES = [
+  {"title": "Classic French Toast", "cuisine": "American", "mealType": "Breakfast", "totalTimeMinutes": 15, "servings": 2, "description": "Thick-cut bread soaked in egg custard and pan-fried golden.", "spiceLevel": "Mild", "ingredients": [{"name": "Bread", "quantity": "4 slices"}, {"name": "Eggs", "quantity": "2"}, {"name": "Milk", "quantity": "1/4 cup"}, {"name": "Butter", "quantity": "2 tbsp"}, {"name": "Cinnamon", "quantity": "1/2 tsp"}, {"name": "Vanilla extract", "quantity": "1 tsp"}], "steps": ["Whisk eggs, milk, cinnamon and vanilla together.", "Dip bread slices in egg mixture, coating both sides.", "Melt butter in pan over medium heat.", "Cook bread 2\u20133 min per side until golden.", "Serve with maple syrup."], "id": "seed-1", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Fluffy Pancakes", "cuisine": "American", "mealType": "Breakfast", "totalTimeMinutes": 20, "servings": 4, "description": "Tall cloud-light pancakes \u2014 a weekend classic.", "spiceLevel": "Mild", "ingredients": [{"name": "Flour", "quantity": "1 1/2 cups"}, {"name": "Milk", "quantity": "1 cup"}, {"name": "Eggs", "quantity": "2"}, {"name": "Butter", "quantity": "3 tbsp"}, {"name": "Baking powder", "quantity": "2 tsp"}, {"name": "Sugar", "quantity": "2 tbsp"}], "steps": ["Whisk dry ingredients in one bowl.", "Whisk wet ingredients in another.", "Fold wet into dry until just combined.", "Cook ladlefuls in buttered pan 2\u20133 min per side.", "Serve immediately."], "id": "seed-2", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Denver Omelette", "cuisine": "American", "mealType": "Breakfast", "totalTimeMinutes": 15, "servings": 2, "description": "Hearty omelette with bell peppers, onion and cheddar.", "spiceLevel": "Mild", "ingredients": [{"name": "Eggs", "quantity": "4"}, {"name": "Bell pepper", "quantity": "1/2"}, {"name": "Onion", "quantity": "1/4"}, {"name": "Cheddar cheese", "quantity": "1/3 cup"}, {"name": "Butter", "quantity": "1 tbsp"}, {"name": "Ham", "quantity": "1/3 cup"}], "steps": ["Dice pepper, onion and ham.", "Saut\u00e9 vegetables and ham in butter 3 min.", "Whisk eggs with salt and pepper.", "Pour eggs over filling, cook until set.", "Fold in half and top with cheddar."], "id": "seed-3", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Overnight Oats", "cuisine": "American", "mealType": "Breakfast", "totalTimeMinutes": 5, "servings": 1, "description": "No-cook oats soaked overnight \u2014 grab-and-go fuel.", "spiceLevel": "Mild", "ingredients": [{"name": "Oats", "quantity": "1/2 cup"}, {"name": "Milk", "quantity": "1/2 cup"}, {"name": "Yogurt", "quantity": "1/4 cup"}, {"name": "Honey", "quantity": "1 tbsp"}, {"name": "Banana", "quantity": "1/2"}], "steps": ["Combine oats, milk, yogurt and honey in a jar.", "Stir well.", "Refrigerate overnight.", "Top with banana and fruit before serving."], "id": "seed-4", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Shakshuka", "cuisine": "Middle Eastern", "mealType": "Breakfast", "totalTimeMinutes": 25, "servings": 2, "description": "Poached eggs in a spiced tomato and pepper sauce.", "spiceLevel": "Medium", "ingredients": [{"name": "Canned tomatoes", "quantity": "1 can"}, {"name": "Eggs", "quantity": "4"}, {"name": "Bell pepper", "quantity": "1"}, {"name": "Onion", "quantity": "1"}, {"name": "Garlic", "quantity": "3 cloves"}, {"name": "Cumin", "quantity": "1 tsp"}, {"name": "Paprika", "quantity": "1 tsp"}], "steps": ["Saut\u00e9 onion, pepper and garlic until soft.", "Add spices, cook 1 min.", "Add tomatoes, simmer 10 min.", "Make wells, crack in eggs.", "Cover and cook until whites are set."], "id": "seed-5", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Banana Oat Pancakes", "cuisine": "American", "mealType": "Breakfast", "totalTimeMinutes": 20, "servings": 2, "description": "Naturally sweet pancakes made from banana and oats.", "spiceLevel": "Mild", "ingredients": [{"name": "Banana", "quantity": "2 ripe"}, {"name": "Oats", "quantity": "1 cup"}, {"name": "Eggs", "quantity": "2"}, {"name": "Milk", "quantity": "1/4 cup"}, {"name": "Baking powder", "quantity": "1/2 tsp"}], "steps": ["Blend all ingredients until smooth.", "Rest batter 2 min.", "Cook on lightly oiled pan over medium heat.", "Flip when bubbles form, 2 min per side.", "Serve with honey."], "id": "seed-6", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Spinach & Feta Scrambled Eggs", "cuisine": "Mediterranean", "mealType": "Breakfast", "totalTimeMinutes": 12, "servings": 2, "description": "Creamy scrambled eggs with wilted spinach and tangy feta.", "spiceLevel": "Mild", "ingredients": [{"name": "Eggs", "quantity": "4"}, {"name": "Spinach", "quantity": "2 cups"}, {"name": "Feta cheese", "quantity": "1/3 cup"}, {"name": "Butter", "quantity": "1 tbsp"}, {"name": "Garlic", "quantity": "1 clove"}], "steps": ["Wilt spinach and garlic in butter 2 min.", "Whisk eggs with salt.", "Pour over spinach on low heat.", "Stir gently until softly set.", "Crumble feta over top."], "id": "seed-7", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Greek Yogurt Parfait", "cuisine": "Greek", "mealType": "Breakfast", "totalTimeMinutes": 5, "servings": 1, "description": "Thick yogurt layered with granola and honey.", "spiceLevel": "Mild", "ingredients": [{"name": "Greek yogurt", "quantity": "1 cup"}, {"name": "Granola", "quantity": "1/3 cup"}, {"name": "Honey", "quantity": "2 tsp"}, {"name": "Blueberries", "quantity": "1/2 cup"}], "steps": ["Spoon yogurt into a bowl.", "Layer with granola and berries.", "Drizzle honey over the top.", "Serve immediately."], "id": "seed-8", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Cr\u00eapes with Lemon & Honey", "cuisine": "French", "mealType": "Breakfast", "totalTimeMinutes": 20, "servings": 4, "description": "Thin lacy French cr\u00eapes \u2014 simple and perfect.", "spiceLevel": "Mild", "ingredients": [{"name": "Flour", "quantity": "1 cup"}, {"name": "Eggs", "quantity": "2"}, {"name": "Milk", "quantity": "1 1/4 cups"}, {"name": "Butter", "quantity": "2 tbsp"}, {"name": "Lemon", "quantity": "1"}, {"name": "Honey", "quantity": "3 tbsp"}], "steps": ["Whisk flour, eggs and milk into smooth batter.", "Rest 15 min.", "Cook thin rounds in buttered pan, 1 min each side.", "Serve with lemon juice and honey."], "id": "seed-9", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Menemen", "cuisine": "Turkish", "mealType": "Breakfast", "totalTimeMinutes": 15, "servings": 2, "description": "Turkish scrambled eggs with tomatoes and peppers.", "spiceLevel": "Medium", "ingredients": [{"name": "Eggs", "quantity": "4"}, {"name": "Tomato", "quantity": "2"}, {"name": "Bell pepper", "quantity": "1"}, {"name": "Onion", "quantity": "1/2"}, {"name": "Olive oil", "quantity": "2 tbsp"}, {"name": "Paprika", "quantity": "1/2 tsp"}], "steps": ["Saut\u00e9 onion and pepper in olive oil until soft.", "Add chopped tomatoes, cook 5 min.", "Whisk eggs and pour in.", "Stir gently until softly set.", "Season and serve with bread."], "id": "seed-10", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Tomato Basil Pasta", "cuisine": "Italian", "mealType": "Lunch", "totalTimeMinutes": 20, "servings": 4, "description": "Simple vibrant pasta with fresh tomato-garlic sauce.", "spiceLevel": "Mild", "ingredients": [{"name": "Pasta", "quantity": "300g"}, {"name": "Tomato", "quantity": "4"}, {"name": "Garlic", "quantity": "4 cloves"}, {"name": "Olive oil", "quantity": "3 tbsp"}, {"name": "Basil", "quantity": "1 bunch"}, {"name": "Parmesan", "quantity": "1/4 cup"}], "steps": ["Boil pasta in salted water.", "Saut\u00e9 garlic in olive oil 1 min.", "Add chopped tomatoes, cook 10 min.", "Drain pasta, toss with sauce.", "Finish with basil and parmesan."], "id": "seed-11", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Black Bean Tacos", "cuisine": "Mexican", "mealType": "Lunch", "totalTimeMinutes": 20, "servings": 4, "description": "Smoky spiced black beans with cheddar in warm tortillas.", "spiceLevel": "Medium", "ingredients": [{"name": "Black beans", "quantity": "2 cans"}, {"name": "Tortillas", "quantity": "8"}, {"name": "Cheddar cheese", "quantity": "1 cup"}, {"name": "Avocado", "quantity": "2"}, {"name": "Cumin", "quantity": "1 tsp"}, {"name": "Lime", "quantity": "1"}, {"name": "Garlic", "quantity": "2 cloves"}], "steps": ["Saut\u00e9 garlic, add beans and cumin.", "Mash half the beans to make a creamy filling.", "Warm tortillas in a dry pan.", "Fill with beans, avocado and cheese.", "Squeeze lime over before serving."], "id": "seed-12", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Chicken Caesar Salad", "cuisine": "American", "mealType": "Lunch", "totalTimeMinutes": 20, "servings": 2, "description": "Crisp romaine, grilled chicken and classic Caesar dressing.", "spiceLevel": "Mild", "ingredients": [{"name": "Chicken breast", "quantity": "2"}, {"name": "Romaine lettuce", "quantity": "1 head"}, {"name": "Parmesan", "quantity": "1/4 cup"}, {"name": "Croutons", "quantity": "1 cup"}, {"name": "Caesar dressing", "quantity": "4 tbsp"}, {"name": "Lemon", "quantity": "1/2"}], "steps": ["Season chicken, grill or pan-fry 6 min each side.", "Slice chicken once rested.", "Chop romaine and toss with dressing.", "Top with chicken, parmesan and croutons.", "Finish with lemon juice."], "id": "seed-13", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Greek Salad", "cuisine": "Greek", "mealType": "Lunch", "totalTimeMinutes": 10, "servings": 2, "description": "Crisp vegetables and feta in a bright olive oil dressing.", "spiceLevel": "Mild", "ingredients": [{"name": "Cucumber", "quantity": "1"}, {"name": "Tomato", "quantity": "2"}, {"name": "Feta cheese", "quantity": "100g"}, {"name": "Olives", "quantity": "1/2 cup"}, {"name": "Red onion", "quantity": "1/4"}, {"name": "Olive oil", "quantity": "3 tbsp"}, {"name": "Oregano", "quantity": "1 tsp"}], "steps": ["Chop cucumber, tomatoes and red onion.", "Toss with olive oil, salt and oregano.", "Top with feta and olives.", "Serve with pita bread."], "id": "seed-14", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Pad Thai", "cuisine": "Thai", "mealType": "Lunch", "totalTimeMinutes": 25, "servings": 2, "description": "Classic wok-fried rice noodles with a tangy tamarind sauce.", "spiceLevel": "Medium", "ingredients": [{"name": "Rice noodles", "quantity": "200g"}, {"name": "Eggs", "quantity": "2"}, {"name": "Spring onion", "quantity": "3"}, {"name": "Bean sprouts", "quantity": "1 cup"}, {"name": "Peanuts", "quantity": "1/4 cup"}, {"name": "Soy sauce", "quantity": "3 tbsp"}, {"name": "Lime", "quantity": "1"}], "steps": ["Soak noodles per package instructions.", "Stir-fry spring onion in hot oil 1 min.", "Push aside, scramble eggs.", "Add noodles and sauce, toss over high heat.", "Serve with peanuts and lime."], "id": "seed-15", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Lentil Soup", "cuisine": "Middle Eastern", "mealType": "Lunch", "totalTimeMinutes": 35, "servings": 4, "description": "Warming red lentil soup with cumin and lemon.", "spiceLevel": "Mild", "ingredients": [{"name": "Red lentils", "quantity": "1 cup"}, {"name": "Onion", "quantity": "1"}, {"name": "Garlic", "quantity": "3 cloves"}, {"name": "Cumin", "quantity": "2 tsp"}, {"name": "Lemon", "quantity": "1"}, {"name": "Olive oil", "quantity": "2 tbsp"}], "steps": ["Saut\u00e9 onion and garlic in oil until golden.", "Add lentils and 4 cups water.", "Simmer 20 min until lentils dissolve.", "Season with cumin, salt and lemon juice.", "Blend partially for a creamy texture."], "id": "seed-16", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Caprese Sandwich", "cuisine": "Italian", "mealType": "Lunch", "totalTimeMinutes": 10, "servings": 2, "description": "Fresh mozzarella, tomato and basil on crusty bread.", "spiceLevel": "Mild", "ingredients": [{"name": "Bread", "quantity": "4 slices"}, {"name": "Mozzarella", "quantity": "150g"}, {"name": "Tomato", "quantity": "2"}, {"name": "Basil", "quantity": "1 bunch"}, {"name": "Olive oil", "quantity": "2 tbsp"}, {"name": "Balsamic vinegar", "quantity": "1 tbsp"}], "steps": ["Slice mozzarella and tomato.", "Layer on bread with basil leaves.", "Drizzle with olive oil and balsamic.", "Season with salt and black pepper.", "Press lightly and serve."], "id": "seed-17", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Avocado Toast", "cuisine": "American", "mealType": "Lunch", "totalTimeMinutes": 10, "servings": 2, "description": "Creamy smashed avocado on toasted sourdough.", "spiceLevel": "Mild", "ingredients": [{"name": "Bread", "quantity": "4 slices"}, {"name": "Avocado", "quantity": "2"}, {"name": "Lemon", "quantity": "1/2"}, {"name": "Eggs", "quantity": "2"}, {"name": "Chili flakes", "quantity": "pinch"}], "steps": ["Toast bread until golden.", "Mash avocado with lemon juice and salt.", "Fry or poach eggs to your liking.", "Spread avocado on toast.", "Top with egg and chili flakes."], "id": "seed-18", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Spaghetti Bolognese", "cuisine": "Italian", "mealType": "Dinner", "totalTimeMinutes": 45, "servings": 4, "description": "Rich slow-cooked meat sauce on al dente spaghetti.", "spiceLevel": "Mild", "ingredients": [{"name": "Spaghetti", "quantity": "400g"}, {"name": "Ground beef", "quantity": "400g"}, {"name": "Canned tomatoes", "quantity": "1 can"}, {"name": "Onion", "quantity": "1"}, {"name": "Garlic", "quantity": "3 cloves"}, {"name": "Carrot", "quantity": "1"}, {"name": "Olive oil", "quantity": "2 tbsp"}], "steps": ["Brown beef in oil, drain excess fat.", "Add onion, garlic and carrot, cook 5 min.", "Add tomatoes, simmer 25 min.", "Cook spaghetti in salted water.", "Toss pasta with sauce and parmesan."], "id": "seed-19", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Butter Chicken", "cuisine": "Indian", "mealType": "Dinner", "totalTimeMinutes": 40, "servings": 4, "description": "Tender chicken in a velvety spiced tomato-cream sauce.", "spiceLevel": "Medium", "ingredients": [{"name": "Chicken breast", "quantity": "600g"}, {"name": "Canned tomatoes", "quantity": "1 can"}, {"name": "Cream", "quantity": "1/2 cup"}, {"name": "Butter", "quantity": "3 tbsp"}, {"name": "Garlic", "quantity": "4 cloves"}, {"name": "Ginger", "quantity": "1 tbsp"}, {"name": "Cumin", "quantity": "1 tsp"}, {"name": "Garam masala", "quantity": "2 tsp"}], "steps": ["Brown chicken pieces in butter.", "Add garlic, ginger and spices, cook 2 min.", "Add tomatoes, simmer 15 min.", "Stir in cream and simmer 5 more min.", "Serve over basmati rice."], "id": "seed-20", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Beef Stir Fry", "cuisine": "Chinese", "mealType": "Dinner", "totalTimeMinutes": 25, "servings": 4, "description": "Tender beef and crisp vegetables in a savory oyster sauce.", "spiceLevel": "Mild", "ingredients": [{"name": "Beef", "quantity": "400g"}, {"name": "Broccoli", "quantity": "2 cups"}, {"name": "Bell pepper", "quantity": "1"}, {"name": "Garlic", "quantity": "3 cloves"}, {"name": "Soy sauce", "quantity": "3 tbsp"}, {"name": "Ginger", "quantity": "1 tsp"}, {"name": "Sesame oil", "quantity": "1 tsp"}], "steps": ["Slice beef thinly against the grain.", "Sear beef in hot wok 2 min, set aside.", "Stir-fry vegetables and garlic 3 min.", "Return beef, add sauce ingredients.", "Toss over high heat 1 min."], "id": "seed-21", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Salmon with Roasted Veg", "cuisine": "Mediterranean", "mealType": "Dinner", "totalTimeMinutes": 30, "servings": 2, "description": "Flaky oven-roasted salmon with colorful seasonal vegetables.", "spiceLevel": "Mild", "ingredients": [{"name": "Salmon fillet", "quantity": "2"}, {"name": "Zucchini", "quantity": "1"}, {"name": "Bell pepper", "quantity": "1"}, {"name": "Cherry tomatoes", "quantity": "1 cup"}, {"name": "Olive oil", "quantity": "3 tbsp"}, {"name": "Lemon", "quantity": "1"}, {"name": "Garlic", "quantity": "2 cloves"}], "steps": ["Preheat oven to 200\u00b0C.", "Toss vegetables with olive oil and garlic.", "Roast 15 min.", "Season salmon, place on top of veg.", "Roast 12\u201315 more min, finish with lemon."], "id": "seed-22", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Thai Green Curry", "cuisine": "Thai", "mealType": "Dinner", "totalTimeMinutes": 30, "servings": 4, "description": "Fragrant coconut milk curry with chicken and vegetables.", "spiceLevel": "Hot", "ingredients": [{"name": "Chicken breast", "quantity": "500g"}, {"name": "Coconut milk", "quantity": "1 can"}, {"name": "Green curry paste", "quantity": "3 tbsp"}, {"name": "Zucchini", "quantity": "1"}, {"name": "Bell pepper", "quantity": "1"}, {"name": "Basil", "quantity": "1 bunch"}, {"name": "Fish sauce", "quantity": "2 tbsp"}], "steps": ["Fry curry paste in oil 1 min.", "Add chicken, cook 3 min.", "Pour in coconut milk, simmer 10 min.", "Add vegetables, cook 7 min.", "Finish with fish sauce and basil."], "id": "seed-23", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Mushroom Risotto", "cuisine": "Italian", "mealType": "Dinner", "totalTimeMinutes": 40, "servings": 4, "description": "Creamy arborio rice with earthy mushrooms and parmesan.", "spiceLevel": "Mild", "ingredients": [{"name": "Arborio rice", "quantity": "300g"}, {"name": "Mushrooms", "quantity": "300g"}, {"name": "Parmesan", "quantity": "1/2 cup"}, {"name": "Onion", "quantity": "1"}, {"name": "Garlic", "quantity": "2 cloves"}, {"name": "Butter", "quantity": "3 tbsp"}, {"name": "White wine", "quantity": "1/2 cup"}], "steps": ["Saut\u00e9 onion and garlic in butter.", "Add rice and toast 2 min.", "Add wine, stir until absorbed.", "Add warm stock ladle by ladle, stirring constantly.", "Finish with mushrooms, butter and parmesan."], "id": "seed-24", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Korean Bibimbap", "cuisine": "Korean", "mealType": "Dinner", "totalTimeMinutes": 35, "servings": 2, "description": "Colorful rice bowl with saut\u00e9ed vegetables and gochujang.", "spiceLevel": "Medium", "ingredients": [{"name": "Rice", "quantity": "1 cup"}, {"name": "Eggs", "quantity": "2"}, {"name": "Spinach", "quantity": "1 cup"}, {"name": "Carrot", "quantity": "1"}, {"name": "Mushrooms", "quantity": "1 cup"}, {"name": "Soy sauce", "quantity": "2 tbsp"}, {"name": "Sesame oil", "quantity": "1 tbsp"}], "steps": ["Cook rice.", "Separately saut\u00e9 each vegetable with soy sauce.", "Fry eggs sunny-side up.", "Arrange vegetables and egg over rice.", "Drizzle sesame oil, mix before eating."], "id": "seed-25", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Chicken Tikka Masala", "cuisine": "Indian", "mealType": "Dinner", "totalTimeMinutes": 45, "servings": 4, "description": "Grilled chicken in a rich, smoky tomato-cream masala.", "spiceLevel": "Medium", "ingredients": [{"name": "Chicken breast", "quantity": "600g"}, {"name": "Yogurt", "quantity": "1/2 cup"}, {"name": "Canned tomatoes", "quantity": "1 can"}, {"name": "Cream", "quantity": "1/3 cup"}, {"name": "Onion", "quantity": "1"}, {"name": "Garlic", "quantity": "4 cloves"}, {"name": "Garam masala", "quantity": "2 tsp"}, {"name": "Paprika", "quantity": "1 tsp"}], "steps": ["Marinate chicken in yogurt and spices 20 min.", "Grill or pan-fry chicken until charred.", "Saut\u00e9 onion and garlic, add tomatoes.", "Simmer 15 min, stir in cream.", "Add chicken, simmer 5 more min."], "id": "seed-26", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Beef Tacos", "cuisine": "Mexican", "mealType": "Dinner", "totalTimeMinutes": 25, "servings": 4, "description": "Seasoned ground beef tacos with fresh toppings.", "spiceLevel": "Medium", "ingredients": [{"name": "Ground beef", "quantity": "400g"}, {"name": "Tortillas", "quantity": "8"}, {"name": "Onion", "quantity": "1"}, {"name": "Garlic", "quantity": "2 cloves"}, {"name": "Cumin", "quantity": "1 tsp"}, {"name": "Cheddar cheese", "quantity": "1 cup"}, {"name": "Tomato", "quantity": "2"}, {"name": "Lime", "quantity": "1"}], "steps": ["Brown beef with onion and garlic.", "Season with cumin, salt and chili powder.", "Warm tortillas in a dry pan.", "Fill with beef, cheese and tomato.", "Squeeze lime and serve."], "id": "seed-27", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Honey Garlic Salmon", "cuisine": "American", "mealType": "Dinner", "totalTimeMinutes": 20, "servings": 2, "description": "Pan-seared salmon glazed with honey, garlic and soy.", "spiceLevel": "Mild", "ingredients": [{"name": "Salmon fillet", "quantity": "2"}, {"name": "Honey", "quantity": "3 tbsp"}, {"name": "Garlic", "quantity": "3 cloves"}, {"name": "Soy sauce", "quantity": "2 tbsp"}, {"name": "Butter", "quantity": "1 tbsp"}, {"name": "Lemon", "quantity": "1/2"}], "steps": ["Mix honey, soy and garlic.", "Sear salmon skin-down in butter 4 min.", "Flip, pour glaze over.", "Cook 3 more min, basting constantly.", "Serve with squeeze of lemon."], "id": "seed-28", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Guacamole", "cuisine": "Mexican", "mealType": "Snack", "totalTimeMinutes": 10, "servings": 4, "description": "Classic creamy guacamole with lime, cilantro and jalape\u00f1o.", "spiceLevel": "Medium", "ingredients": [{"name": "Avocado", "quantity": "3"}, {"name": "Lime", "quantity": "2"}, {"name": "Onion", "quantity": "1/4"}, {"name": "Tomato", "quantity": "1"}, {"name": "Cilantro", "quantity": "1/4 cup"}, {"name": "Garlic", "quantity": "1 clove"}], "steps": ["Halve and pit avocados.", "Mash with lime juice and salt.", "Fold in onion, tomato, garlic and cilantro.", "Season to taste.", "Serve immediately with chips."], "id": "seed-29", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"},
+  {"title": "Hummus with Pita", "cuisine": "Middle Eastern", "mealType": "Snack", "totalTimeMinutes": 10, "servings": 4, "description": "Velvety chickpea hummus drizzled with olive oil and paprika.", "spiceLevel": "Mild", "ingredients": [{"name": "Chickpeas", "quantity": "1 can"}, {"name": "Tahini", "quantity": "3 tbsp"}, {"name": "Lemon", "quantity": "1"}, {"name": "Garlic", "quantity": "1 clove"}, {"name": "Olive oil", "quantity": "3 tbsp"}, {"name": "Pita bread", "quantity": "4"}], "steps": ["Drain and rinse chickpeas.", "Blend chickpeas, tahini, lemon and garlic.", "Add olive oil and water until smooth.", "Season with salt and paprika.", "Serve with warm pita."], "id": "seed-30", "missingIngredients": [], "usesLowStock": [], "tags": [], "dateAdded": "2025-01-01T00:00:00.000Z"}
+];
+const ALWAYS_HAVE=['salt','pepper','water','oil','olive oil','vegetable oil','cooking oil','baking soda','baking powder','sugar'];
+function invFuzzyMatch(name){
+  const n=(name||'').toLowerCase().trim();
+  if(!n) return false;
+  if(ALWAYS_HAVE.some(s=>n===s||n.includes(s))) return true;
+  return state.inventory.some(item=>{
+    if(isLow(item)) return false;
+    const iName=item.name.toLowerCase();
+    return iName.includes(n)||n.includes(iName)||
+      n.split(/\s+/).filter(w=>w.length>3).some(w=>iName.includes(w));
+  });
+}
+function recipeAvailability(recipe){
+  const ings=recipe.ingredients||[];
+  if(!ings.length) return null;
+  const items=ings.map(i=>{
+    const name=i.name||String(i);
+    const have=typeof i.have==='boolean'?i.have:invFuzzyMatch(name);
+    return {name,quantity:i.quantity||'',have};
+  });
+  const haveCount=items.filter(i=>i.have).length;
+  const missingItems=items.filter(i=>!i.have);
+  return {have:haveCount,missing:missingItems.length,total:items.length,items,missingItems};
+}
+function addCookbookMissingToGrocery(id){
+  const recipe=state.cookbook.find(r=>r.id===id);
+  if(!recipe) return;
+  const avail=recipeAvailability(recipe);
+  if(!avail||!avail.missingItems.length){alert('All ingredients are already in your kitchen!');return;}
+  avail.missingItems.forEach(i=>addGroceryItem(i.name,guessCategory(i.name),'',false,i.quantity||''));
+  saveGrocery();render();ui.tab='grocery';render();
+}
+
+// ─── RENDER: MAIN ─────────────────────────────────────────────────────────
+function render(){
+  document.getElementById('app').innerHTML=
+    renderHeader()+renderTabs()+renderAlertStrip()+
+    '<div class="pp-content">'+renderTab()+'</div>';
+  renderModal();
+  renderCookingModal();
+}
+
+function renderPlannerModalBody(){
+  if(!ui.plannerModal) return '';
+  const{date,slot}=ui.plannerModal;
+  const currentMeal=getPlannerDay(date)[slot.toLowerCase()]||'';
+  const q=(ui.plannerSearch||'').trim();
+  const showCreate=ui.plannerShowCreate;
+
+  // Meal filter pills for narrowing recipe list
+  const mealPills=['All','Breakfast','Lunch','Dinner','Snack'].map(m=>
+    '<button class="pill-btn '+(ui.plannerMealFilter===m?'active':'')+'" data-action="planner-filter-meal" data-val="'+m+'" style="font-size:11px;padding:4px 11px;">'+m+'</button>'
+  ).join('');
+
+  // Filter cookbook by search + meal type filter
+  let cbFiltered=state.cookbook;
+  if(q) cbFiltered=cbFiltered.filter(r=>r.title.toLowerCase().includes(q.toLowerCase())||(r.cuisine&&r.cuisine.toLowerCase().includes(q.toLowerCase())));
+  if(ui.plannerMealFilter!=='All') cbFiltered=cbFiltered.filter(r=>r.mealType===ui.plannerMealFilter);
+  const matches=cbFiltered.slice(0,8);
+
+  const matchRows=matches.map(r=>{
+    const avail=recipeAvailability(r);
+    let availBadge='';
+    if(avail){
+      if(avail.missing===0) availBadge='<span style="font-size:11px;font-weight:800;padding:3px 10px;border-radius:10px;background:var(--green-soft);color:var(--green);white-space:nowrap;">Ready to cook</span>';
+      else availBadge='<span style="font-size:11px;font-weight:800;padding:3px 10px;border-radius:10px;background:var(--orange-soft);color:var(--orange);white-space:nowrap;">'+avail.have+'/'+avail.total+' in stock</span>';
+    }
+    const meta=[r.cuisine,r.totalTimeMinutes?r.totalTimeMinutes+'min':null,r.mealType].filter(Boolean).map(h).join(' · ');
+    return '<button data-action="planner-pick-recipe" data-date="'+h(date)+'" data-slot="'+h(slot)+'" data-title="'+h(r.title)+'" '+
+      'style="width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--border);padding:12px 4px;cursor:pointer;display:flex;align-items:center;gap:12px;" '+
+      'onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'none\'">'+
+      '<div style="flex:1;min-width:0;">'+
+        '<div style="font-weight:800;font-size:14px;margin-bottom:2px;">'+h(r.title)+'</div>'+
+        '<div style="font-size:12px;color:var(--ink-soft);font-weight:700;">'+meta+'</div>'+
+      '</div>'+availBadge+
+    '</button>';
+  }).join('');
+
+  const suggestionsSection='<div style="margin-bottom:12px;">'+
+    '<div class="pill-filters" style="margin-bottom:12px;">'+mealPills+'</div>'+
+    (matches.length>0
+      ? '<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#fff;">'+matchRows+'</div>'
+      : q?'<div style="font-size:13px;color:var(--ink-soft);font-weight:700;padding:12px;background:var(--bg);border-radius:8px;">No recipes found for "'+h(q)+'"</div>'
+        :'<div style="font-size:13px;color:var(--ink-soft);font-weight:700;padding:12px;background:var(--bg);border-radius:8px;">No recipes in cookbook yet — type a name to add one manually.</div>')+
+  '</div>';
+
+  const quickActions=q
+    ?'<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">'+
+        '<button class="btn btn-primary" data-action="planner-manual-add" data-date="'+h(date)+'" data-slot="'+h(slot)+'" style="text-align:left;justify-content:flex-start;gap:8px;">'+
+          '<span>＋</span> Add <strong>"'+h(q)+'"</strong> to planner'+
+        '</button>'+
+        (!showCreate
+          ?'<button data-action="planner-toggle-create" style="background:none;border:1.5px dashed var(--border);border-radius:10px;padding:10px 14px;cursor:pointer;font-size:13px;font-weight:800;color:var(--ink-soft);text-align:left;display:flex;align-items:center;gap:8px;">'+
+              '<span style="font-size:16px;">✦</span> Create "'+h(q)+'" as a full recipe and save to cookbook'+
+            '</button>'
+          :'')
+      +'</div>'
+    :'';
+
+  const mealOpts=['Breakfast','Lunch','Dinner','Snack'].map(m=>'<option value="'+m+'" '+(m===slot?'selected':'')+'>'+m+'</option>').join('');
+  const cuisineOpts=state.settings.cuisines.map(c=>'<option value="'+h(c)+'">'+h(c)+'</option>').join('');
+  const createForm=showCreate
+    ?'<div style="background:var(--bg);border-radius:12px;padding:16px;border:1.5px solid var(--border);margin-bottom:14px;">'+
+        '<div style="font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:var(--green);margin-bottom:12px;">✦ New recipe</div>'+
+        '<div class="form-grid" style="margin-bottom:12px;">'+
+          '<div class="field" style="grid-column:span 2;"><label>Recipe name</label>'+
+            '<input id="pr-title" value="'+h(q)+'" placeholder="e.g. One-pan lemon chicken" required></div>'+
+          '<div class="field"><label>Meal type</label><select id="pr-meal">'+mealOpts+'</select></div>'+
+          '<div class="field"><label>Cuisine</label><select id="pr-cuisine">'+cuisineOpts+'</select></div>'+
+          '<div class="field"><label>Total time (min)</label><input id="pr-time" type="number" min="1" placeholder="30"></div>'+
+          '<div class="field"><label>Servings</label><input id="pr-servings" type="number" min="1" placeholder="4"></div>'+
+          '<div class="field" style="grid-column:span 2;"><label>Ingredients — one per line</label>'+
+            '<textarea id="pr-ingredients" rows="3" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-weight:600;resize:vertical;" placeholder="2 chicken breasts&#10;1 lemon&#10;3 garlic cloves"></textarea></div>'+
+          '<div class="field" style="grid-column:span 2;"><label>Steps — one per line</label>'+
+            '<textarea id="pr-steps" rows="3" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-weight:600;resize:vertical;" placeholder="Season chicken.&#10;Heat pan.&#10;Cook 6 min each side."></textarea></div>'+
+        '</div>'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
+          '<button class="btn btn-primary" data-action="confirm-planner-add-recipe" data-date="'+h(date)+'" data-slot="'+h(slot)+'">Save & add to planner</button>'+
+          '<button data-action="planner-toggle-create" class="btn btn-secondary">Cancel</button>'+
+        '</div>'+
+      '</div>'
+    :'';
+
+  const currentInfo=currentMeal&&!showCreate
+    ?'<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;">'+
+        '<span style="font-size:13px;color:var(--ink-soft);font-weight:700;flex:1;">Current: <strong style="color:var(--ink);">'+h(currentMeal)+'</strong></span>'+
+        '<button class="btn btn-ghost" data-action="clear-planner-meal" data-date="'+h(date)+'" data-slot="'+h(slot)+'" style="color:var(--orange);font-size:12px;">Clear slot</button>'+
+      '</div>'
+    :'';
+
+  return suggestionsSection+quickActions+createForm+currentInfo;
+}
+
+function renderModal(){
+  const root=document.getElementById('modal-root');
+  if(!ui.plannerModal){root.innerHTML='';return;}
+  const{date,slot}=ui.plannerModal;
+  const dObj=new Date(date+'T00:00:00');
+  const dateLabel=dObj.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});
+  const dayAbbr=dObj.toLocaleDateString(undefined,{weekday:'short'});
+  root.innerHTML=
+    '<div class="modal-overlay" id="pp-modal-overlay">'+
+      '<div class="modal-sheet" style="padding:0;display:flex;flex-direction:column;overflow:hidden;">'+
+        // Header (never re-renders while typing)
+        '<div style="padding:20px 22px 0;flex-shrink:0;">'+
+          '<button class="modal-close" data-action="close-modal">×</button>'+
+          '<div class="modal-title" style="margin-bottom:2px;">Choose a recipe</div>'+
+          '<div style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:16px;">'+
+            h(dayAbbr)+' — '+h(slot)+
+          '</div>'+
+          '<div class="search-box" style="margin-bottom:14px;">'+
+            '<span class="search-icon">🔍</span>'+
+            '<input id="planner-search-input" data-live="planner-search" value="'+h(ui.plannerSearch)+'" '+
+              'placeholder="Search recipes, or type anything…" autocomplete="off" style="font-size:14px;">'+
+          '</div>'+
+        '</div>'+
+        // Scrollable body (updates on search/filter)
+        '<div id="planner-modal-body" style="flex:1;overflow-y:auto;padding:0 22px 10px;">'+
+          renderPlannerModalBody()+
+        '</div>'+
+        // Sticky footer
+        '<div style="padding:14px 22px;border-top:1px solid var(--border);flex-shrink:0;">'+
+          '<button class="btn btn-secondary" data-action="close-modal" style="width:100%;">Cancel</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  setTimeout(()=>{const el=document.getElementById('planner-search-input');if(el)el.focus();},0);
+}
+
+function renderHeader(){
+  const settings=state.settings;
+  const avatars=(settings.members||['T','B']).map((m,i)=>
+    '<div class="pp-avatar" style="background:'+avatarColor(m)+'">'+h(m)+'</div>').join('');
+  return '<header class="pp-header">'+
+    '<div class="pp-logo">pantry<span>pal</span></div>'+
+    '<div class="pp-household">'+
+      '<span class="pp-household-name">'+h(settings.householdName)+'</span>'+
+      '<div class="pp-avatars">'+avatars+'</div>'+
+    '</div>'+
+  '</header>';
+}
+
+function renderTabs(){
+  const tabs=[
+    {id:'home',icon:'🏠',label:'Home'},
+    {id:'kitchen',icon:'🍳',label:'Kitchen'},
+    {id:'grocery',icon:'🛒',label:'Grocery'},
+    {id:'cook',icon:'✦',label:'Recipes'},
+    {id:'planner',icon:'🗓',label:'Planner'},
+    {id:'settings',icon:'⚙',label:'Settings'}
+  ];
+  return '<div class="pp-tabs">'+tabs.map(t=>
+    '<button class="pp-tab '+(ui.tab===t.id?'active':'')+'" data-action="set-tab" data-tab="'+t.id+'">'+t.icon+' '+t.label+'</button>'
+  ).join('')+'</div>';
+}
+
+function renderAlertStrip(){
+  const expiring=state.inventory.filter(isExpiring);
+  const low=state.inventory.filter(i=>isLow(i)&&!isExpiring(i));
+  if(expiring.length===0&&low.length===0) return '';
+  const hasAny=expiring.length+low.length>0;
+  let parts=[];
+  if(expiring.length>0){
+    const names=expiring.slice(0,4).map(i=>{
+      const d=new Date(i.expiresOn+'T00:00:00'),today=new Date();today.setHours(0,0,0,0);
+      const diff=Math.round((d-today)/86400000);
+      return h(i.name)+(diff<=0?'':' ('+diff+'d)');
+    }).join(' · ')+(expiring.length>4?'…':'');
+    parts.push('<span class="alert-badge expiring">🔔 USE SOON</span><span class="alert-text">'+names+'</span>');
+  }
+  if(low.length>0){
+    const names=low.slice(0,4).map(i=>h(i.name)).join(' · ')+(low.length>4?'…':'');
+    parts.push('<span class="alert-badge low">📉 LOW STOCK</span><span class="alert-text">'+names+'</span>');
+  }
+  return '<div class="alert-strip">'+
+    parts.join('')+
+    (hasAny?'<button class="alert-add-btn" data-action="add-all-low-stock">→ Add to grocery</button>':'')+
+  '</div>';
+}
+
+function renderTab(){
+  if(ui.tab==='home')    return renderHome();
+  if(ui.tab==='kitchen') return renderKitchen();
+  if(ui.tab==='grocery') return renderGrocery();
+  if(ui.tab==='cook')    return renderCook();
+  if(ui.tab==='planner') return renderPlanner();
+  if(ui.tab==='settings') return renderSettings();
+  return '';
+}
+
+// ─── RENDER: KITCHEN ──────────────────────────────────────────────────────
+function kitchenFiltered(){
+  let filtered=state.inventory;
+  if(ui.kitchenLoc!=='All')    filtered=filtered.filter(i=>i.location===ui.kitchenLoc);
+  if(ui.kitchenCat!=='All')    filtered=filtered.filter(i=>i.category===ui.kitchenCat);
+  if(ui.kitchenSearch)         filtered=filtered.filter(i=>i.name.toLowerCase().includes(ui.kitchenSearch.toLowerCase()));
+  if(ui.kitchenExpiry==='expiring') filtered=filtered.filter(isExpiring);
+  if(ui.kitchenExpiry==='low')      filtered=filtered.filter(isLow);
+  return filtered;
+}
+function renderKitchenShelves(){
+  const cats=state.settings.categories;
+  const filtered=kitchenFiltered();
+  if(filtered.length===0)
+    return '<div class="status-card">'+(state.inventory.length===0?'Your kitchen is empty. Add your first item above.':'No items match your filters.')+'</div>';
+  return cats.map(cat=>{
+    const items=filtered.filter(i=>i.category===cat.name).sort((a,b)=>a.name.localeCompare(b.name));
+    if(!items.length) return '';
+    return '<div class="shelf">'+
+      '<div class="shelf-header">'+
+        '<span class="shelf-tag" style="background:'+cat.bg+';color:'+cat.color+';">'+cat.emoji+' '+h(cat.name)+'</span>'+
+        '<span class="shelf-count">'+items.length+'</span>'+
+      '</div>'+
+      items.map(item=>renderItemRow(item,cat)).join('')+
+    '</div>';
+  }).join('');
+}
+function renderKitchen(){
+  const addBtn=ui.showAddItem
+    ?'<button class="btn btn-secondary" data-action="cancel-add-item">Cancel</button>'
+    :'<button class="btn btn-primary" data-action="open-add-item">+ Add item</button>';
+  const isAllActive = ui.kitchenLoc==='All' && ui.kitchenExpiry==='all';
+  const allBtn='<button class="pill-btn '+(isAllActive?'active':'')+'" data-action="reset-kitchen-filters">All</button>';
+  const locBtns=LOCATIONS.map(l=>
+    '<button class="pill-btn '+(ui.kitchenLoc===l?'active':'')+'" data-action="set-kitchen-loc" data-val="'+h(l)+'">'+h(l)+'</button>').join('');
+  const expiryBtns=[{v:'expiring',l:'Expiring'},{v:'low',l:'Low stock'}].map(o=>
+    '<button class="pill-btn '+(ui.kitchenExpiry===o.v?'active':'')+'" data-action="set-kitchen-expiry" data-val="'+o.v+'">'+o.l+'</button>').join('');
+  return '<div class="toolbar">'+
+    '<div class="search-box"><span class="search-icon">🔍</span>'+
+      '<input id="kitchen-search" data-live="kitchen-search" value="'+h(ui.kitchenSearch)+'" placeholder="Search kitchen…">'+
+    '</div>'+
+    addBtn+
+  '</div>'+
+  '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">'+
+    '<div class="pill-filters">'+allBtn+locBtns+expiryBtns+'</div>'+
+  '</div>'+
+  (ui.showAddItem?renderItemForm():'')+
+  '<div id="kitchen-shelves">'+renderKitchenShelves()+'</div>';
+}
+
+function renderItemRow(item,cat){
+  const low=isLow(item);
+  const exp=item.expiresOn?expiryLabel(item.expiresOn):'';
+  const metaParts=[h(item.location)]; if(exp) metaParts.push(exp);
+  return '<div class="item-row" style="border-left-color:'+cat.color+';">'+
+    '<span class="item-emoji">'+cat.emoji+'</span>'+
+    '<div class="item-main">'+
+      '<span class="item-name">'+h(item.name)+(low?'<span class="low-badge">LOW</span>':'')+'</span>'+
+      '<div class="item-meta">'+metaParts.join(' · ')+'</div>'+
+    '</div>'+
+    '<div class="qty-row">'+
+      '<button class="qty-btn" data-action="adj-qty" data-id="'+item.id+'" data-delta="-1">−</button>'+
+      '<span class="qty-val">'+h(item.quantity)+(item.unit?' '+h(item.unit):'')+'</span>'+
+      '<button class="qty-btn" data-action="adj-qty" data-id="'+item.id+'" data-delta="1">+</button>'+
+    '</div>'+
+    (low?'<button class="btn-icon" data-action="quick-add-grocery" data-id="'+item.id+'">+ List</button>':'')+
+    '<button class="btn-icon" data-action="edit-item" data-id="'+item.id+'">Edit</button>'+
+    '<button class="btn-icon" data-action="delete-item" data-id="'+item.id+'">✕</button>'+
+  '</div>';
+}
+
+function renderItemForm(){
+  const editing=ui.editingItemId?state.inventory.find(i=>i.id===ui.editingItemId):null;
+  const v=editing||{name:'',category:state.settings.categories[0]?.name||'Produce',location:'Fridge',quantity:1,unit:'',threshold:1,expiresOn:''};
+  const catOptions=state.settings.categories.map(c=>'<option value="'+h(c.name)+'" '+(c.name===v.category?'selected':'')+'>'+c.emoji+' '+h(c.name)+'</option>').join('');
+  const locOptions=LOCATIONS.map(l=>'<option value="'+l+'" '+(l===v.location?'selected':'')+'>'+l+'</option>').join('');
+  return '<form class="form-card" data-form="add-item">'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>Name</label><input name="name" required value="'+h(v.name)+'" placeholder="e.g. Greek yogurt" '+(editing?'':'data-live="item-name-auto"')+'></div>'+
+      '<div class="field"><label>Category</label><select name="category" id="item-cat-select" '+(editing?'data-touched="1"':'')+'>'+catOptions+'</select></div>'+
+      '<div class="field"><label>Location</label><select name="location">'+locOptions+'</select></div>'+
+      '<div class="field"><label>Quantity</label><input type="number" name="quantity" min="0" step="any" value="'+h(v.quantity)+'"></div>'+
+      '<div class="field"><label>Unit</label><input name="unit" list="unit-dl" value="'+h(v.unit)+'" placeholder="pcs, g…"></div>'+
+      '<div class="field"><label>Low stock at</label><input type="number" name="threshold" min="0" step="any" value="'+h(v.threshold)+'"></div>'+
+      '<div class="field"><label>Expires on</label><input type="date" name="expiresOn" value="'+h(v.expiresOn)+'"></div>'+
+    '</div>'+
+    '<datalist id="unit-dl">'+UNIT_LIST.map(u=>'<option value="'+u+'">').join('')+'</datalist>'+
+    '<div class="form-actions">'+
+      '<button type="submit" class="btn btn-primary">'+(editing?'Save changes':'Add to kitchen')+'</button>'+
+      '<button type="button" class="btn btn-secondary" data-action="cancel-add-item">Cancel</button>'+
+    '</div>'+
+  '</form>';
+}
+
+// ─── RENDER: GROCERY ──────────────────────────────────────────────────────
+function groceryFiltered(){
+  let filtered=state.grocery.filter(g=>!g.checked);
+  if(ui.grocerySearch) filtered=filtered.filter(g=>g.name.toLowerCase().includes(ui.grocerySearch.toLowerCase()));
+  if(ui.groceryStore!=='All') filtered=filtered.filter(g=>(g.store||'').trim()===ui.groceryStore);
+  return filtered;
+}
+function renderGroceryBody(){
+  const filtered=groceryFiltered();
+  const checked=state.grocery.filter(g=>g.checked);
+  const doneCount=checked.length;
+  let body='';
+  if(filtered.length===0&&!ui.showChecked&&doneCount===0){
+    body='<div class="status-card">Nothing on the list yet. Add an item above, or check your kitchen for what\'s running low.</div>';
+  } else {
+    body=ui.groceryGroup==='store'?renderGroceryByStore(filtered):renderGroceryByCategory(filtered);
+  }
+  if(ui.showChecked&&checked.length>0){
+    body+='<div class="shelf-header" style="margin-top:18px;">'+
+      '<span class="shelf-tag" style="background:#E2DDD0;color:#9A8A78;">✓ Picked up</span>'+
+      '<button class="btn-ghost" data-action="clear-checked">Clear all</button>'+
+    '</div>'+checked.map(g=>renderGroceryRow(g)).join('');
+  }
+  return body;
+}
+function renderGrocery(){
+  const stores=knownStores();
+  const total=state.grocery.length;
+  const doneCount=state.grocery.filter(g=>g.checked).length;
+  const storeOpts=['<option value="All">All stores</option>',...stores.map(s=>'<option value="'+h(s)+'" '+(ui.groceryStore===s?'selected':'')+'>'+h(s)+'</option>')].join('');
+  const storeDatalist='<datalist id="store-dl">'+stores.map(s=>'<option value="'+h(s)+'">').join('')+'</datalist>';
+  const catGuessBg=ui.groceryQuickCatBg||'#E2DCCB';
+  const catGuessColor=ui.groceryQuickCatColor||'#6B7160';
+  const catGuessEmoji=ui.groceryQuickEmoji||'📦';
+  const catGuessName=ui.groceryQuickCat||'Other';
+  const quickAdd='<div class="g-quick-add">'+
+    '<span style="font-size:20px">'+catGuessEmoji+'</span>'+
+    '<input id="grocery-quick-input" data-live="grocery-quick-name" placeholder="Add item… auto-categorizes" autocomplete="off">'+
+    '<span class="cat-preview" id="grocery-cat-preview" style="background:'+catGuessBg+';color:'+catGuessColor+';">'+h(catGuessName)+'</span>'+
+    '<input id="grocery-quick-qty" class="g-input" placeholder="qty" style="width:70px;" data-live="grocery-quick-qty">'+
+    '<input id="grocery-quick-store" class="g-input" list="store-dl" placeholder="store" style="width:110px;" data-live="grocery-quick-store">'+
+    '<button class="btn btn-primary" data-action="quick-add-grocery-form" style="padding:8px 14px;">Add</button>'+
+  '</div>';
+  const showCheckedLabel=ui.showChecked?'Hide checked ('+doneCount+')':'Show checked ('+doneCount+')';
+  const printBtn=doneCount+groceryFiltered().length>0?'<button class="print-btn" onclick="window.print()">🖨 Print</button>':'';
+  const shareBtn=navigator.share?'<button class="print-btn" data-action="share-grocery">⬆ Share</button>':'<button class="print-btn" data-action="copy-grocery">📋 Copy</button>';
+  return storeDatalist+
+  '<div class="toolbar" style="flex-wrap:wrap;gap:10px;">'+
+    '<div style="flex:1;min-width:200px;">'+
+      '<div style="font-family:\'Bitter\',serif;font-size:22px;font-weight:700;">Shopping list</div>'+
+      '<div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-top:2px;">'+doneCount+' of '+total+' ticked off</div>'+
+    '</div>'+
+    '<div style="display:flex;gap:7px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:4px;">'+
+      '<button class="pill-btn '+(ui.groceryGroup==='category'?'active':'')+'" data-action="set-grocery-group" data-val="category">By category</button>'+
+      '<button class="pill-btn '+(ui.groceryGroup==='store'?'active':'')+'" data-action="set-grocery-group" data-val="store">By store</button>'+
+    '</div>'+
+  '</div>'+
+  '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">'+
+    '<div class="search-box" style="flex:1;min-width:160px;"><span class="search-icon">🔍</span>'+
+      '<input id="grocery-search-input" data-live="grocery-search" value="'+h(ui.grocerySearch)+'" placeholder="Search list…">'+
+    '</div>'+
+    '<select class="g-input" style="border-radius:9px;padding:8px 12px;font-size:13px;" data-change="grocery-store-filter">'+storeOpts+'</select>'+
+    '<button class="print-btn" data-action="toggle-show-checked">'+h(showCheckedLabel)+'</button>'+
+    printBtn+shareBtn+
+  '</div>'+
+  quickAdd+(ui.showAddGrocery?renderGroceryForm():'')+
+  '<div id="grocery-list-body">'+renderGroceryBody()+'</div>';
+}
+
+function renderGroceryByCategory(items){
+  const cats=state.settings.categories;
+  return cats.map(cat=>{
+    const inCat=items.filter(g=>g.category===cat.name).sort((a,b)=>a.name.localeCompare(b.name));
+    if(!inCat.length) return '';
+    return '<div class="g-section">'+
+      '<div class="shelf-header"><span class="shelf-tag" style="background:'+cat.bg+';color:'+cat.color+';">'+cat.emoji+' '+h(cat.name)+'</span><span class="shelf-count">'+inCat.length+'</span></div>'+
+      inCat.map(g=>renderGroceryRow(g)).join('')+
+    '</div>';
+  }).join('')+
+  renderUncategorizedGrocery(items,cats.map(c=>c.name));
+}
+function renderUncategorizedGrocery(items,knownCats){
+  const unk=items.filter(g=>!knownCats.includes(g.category)).sort((a,b)=>a.name.localeCompare(b.name));
+  if(!unk.length) return '';
+  return '<div class="g-section"><div class="shelf-header"><span class="shelf-tag" style="background:#E2DCCB;color:#6B7160;">📦 Other</span></div>'+unk.map(g=>renderGroceryRow(g)).join('')+'</div>';
+}
+function renderGroceryByStore(items){
+  const storeOf=g=>(g.store||'').trim()||'No store';
+  const stores=[...new Set(items.map(storeOf))].sort((a,b)=>{
+    if(a==='No store') return 1; if(b==='No store') return -1; return a.localeCompare(b);
+  });
+  return stores.map(store=>{
+    const inStore=items.filter(g=>storeOf(g)===store).sort((a,b)=>a.name.localeCompare(b.name));
+    return '<div class="g-section">'+
+      '<div class="shelf-header"><span class="shelf-tag" style="background:var(--border);color:var(--ink);">'+h(store)+'</span><span class="shelf-count">'+inStore.length+'</span></div>'+
+      inStore.map(g=>renderGroceryRow(g)).join('')+
+    '</div>';
+  }).join('');
+}
+function renderGroceryRow(g){
+  const cat=getCat(g.category);
+  const catOptions=state.settings.categories.map(c=>
+    '<option value="'+h(c.name)+'" '+(c.name===g.category?'selected':'')+'>'+c.emoji+' '+h(c.name)+'</option>'
+  ).join('');
+  return '<div class="g-row '+(g.checked?'done':'')+'" style="border-left-color:'+cat.color+';" id="grow-'+g.id+'">'+
+    '<button class="check-circle '+(g.checked?'checked':'')+'" data-action="toggle-checked" data-id="'+g.id+'">'+
+      (g.checked?'✓':'')+'</button>'+
+    '<div class="g-main">'+
+      '<div class="g-name">'+h(g.name)+(g.fromLowStock?'<span class="low-tag">low</span>':'')+'</div>'+
+      '<div class="g-fields">'+
+        '<input class="g-input g-qty" value="'+h(g.quantity||'')+'" placeholder="qty" list="unit-dl"'+
+          ' data-change="g-qty" data-id="'+g.id+'">'+
+        '<input class="g-input g-store" value="'+h(g.store||'')+'" placeholder="store" list="store-dl"'+
+          ' data-change="g-store" data-id="'+g.id+'">'+
+      '</div>'+
+      (g.note?'<div class="g-note">'+h(g.note)+'</div>':'')+
+      '<select class="cat-select" data-change="g-cat" data-id="'+g.id+'" '+
+        'style="background:'+cat.bg+';color:'+cat.color+';">'+
+        catOptions+
+      '</select>'+
+    '</div>'+
+    '<button class="btn-icon" data-action="delete-grocery" data-id="'+g.id+'">✕</button>'+
+  '</div>';
+}
+function renderGroceryForm(){
+  const catOptions=state.settings.categories.map(c=>'<option value="'+h(c.name)+'">'+c.emoji+' '+h(c.name)+'</option>').join('');
+  return '<form class="form-card" data-form="add-grocery">'+
+    '<div class="form-grid">'+
+      '<div class="field"><label>Item name</label><input name="name" required placeholder="e.g. Olive oil"></div>'+
+      '<div class="field"><label>Category</label><select name="category">'+catOptions+'</select></div>'+
+      '<div class="field"><label>Quantity</label><input name="quantity" placeholder="e.g. 2 bags"></div>'+
+      '<div class="field"><label>Store</label><input name="store" list="store-dl" placeholder="e.g. Costco"></div>'+
+      '<div class="field"><label>Note</label><input name="note" placeholder="brand, size…"></div>'+
+    '</div>'+
+    '<div class="form-actions">'+
+      '<button type="submit" class="btn btn-primary">Add to list</button>'+
+      '<button type="button" class="btn btn-secondary" data-action="close-add-grocery">Cancel</button>'+
+    '</div>'+
+  '</form>';
+}
+
+// ─── RENDER: COOK ─────────────────────────────────────────────────────────
+function renderCook(){
+  const f=ui.cookFilters;
+  const cuisineList=['Any',...state.settings.cuisines,'Other'];
+  const cuisineOpts=cuisineList.map(c=>'<option value="'+h(c)+'" '+(c===f.cuisine?'selected':'')+'>'+h(c)+'</option>').join('');
+  const mealOpts=MEAL_TYPES_FILTER.map(m=>'<option value="'+h(m)+'" '+(m===f.mealType?'selected':'')+'>'+h(m)+'</option>').join('');
+  const timeOpts=TIME_OPTIONS.map(t=>'<option value="'+t.v+'" '+(t.v===f.maxTime?'selected':'')+'>'+h(t.l)+'</option>').join('');
+
+  const filtersHtml='<div class="filters-card">'+
+    '<div class="filter-row">'+
+      '<div class="filter-field"><label>Meal type</label><select data-change="cook-meal">'+mealOpts+'</select></div>'+
+      '<div class="filter-field"><label>Cuisine</label><select data-change="cook-cuisine">'+cuisineOpts+'</select></div>'+
+      (f.cuisine==='Other'?'<div class="filter-field"><label>Which cuisine?</label><input id="cook-custom-cuisine" value="'+h(f.customCuisine)+'" placeholder="e.g. Ethiopian"></div>':'')+
+      '<div class="filter-field"><label>Max time</label><select data-change="cook-time">'+timeOpts+'</select></div>'+
+      '<div class="filter-field" style="flex:2;"><label>Notes</label><input id="cook-notes" value="'+h(f.notes)+'" placeholder="allergies, cravings, dietary…"></div>'+
+    '</div>'+
+    '<label class="check-option">'+
+      '<input type="checkbox" '+(f.preferHave?'checked':'')+' data-change="cook-prefer-have">'+
+      'Prioritize using what I already have'+
+    '</label>'+
+    '<div class="form-actions" style="margin-top:14px;">'+
+      '<button class="btn btn-primary" data-action="find-recipes">✦ Find recipes</button>'+
+      '<button class="btn btn-secondary" data-action="use-what-i-have">Use what I have, right now</button>'+
+    '</div>'+
+  '</div>';
+
+  let results='';
+  if(ui.recipeStatus==='idle') results='<div class="status-card">Set your filters and find something to make.</div>';
+  else if(ui.recipeStatus==='loading') results='<div class="status-card"><div class="spinner"></div>Thinking up recipes…</div>';
+  else if(ui.recipeStatus==='error') results='<div class="error-card">'+h(ui.recipeError)+'</div>';
+  else if(ui.recipeStatus==='done')  results=renderRecipeResults();
+
+  return filtersHtml+results+
+    '<div style="margin-top:36px;border-top:2px solid var(--border);padding-top:28px;">'+
+      renderCookbook()+
+    '</div>';
+}
+
+function renderRecipeResults(){
+  if(!ui.recipes.length) return '<div class="status-card">No recipes found. Try loosening a filter.</div>';
+  return '<div class="recipe-grid">'+ui.recipes.map((r,idx)=>renderRecipeCard(r,idx)).join('')+'</div>';
+}
+
+function renderRecipeCard(r,idx){
+  const missing=r.missingIngredients||[];
+  const usesLow=r.usesLowStock||[];
+  const ings=(r.ingredients||[]).map(ing=>
+    '<li><span class="'+(ing.have?'ing-have':'ing-miss')+'">'+(ing.have?'✓':'·')+'</span> '+h(ing.name)+(ing.quantity?' — '+h(ing.quantity):'')+'</li>'
+  ).join('');
+  const steps=(r.steps||[]).map(s=>'<li>'+h(s)+'</li>').join('');
+  const isSaved=state.cookbook.some(cb=>cb.title.toLowerCase()===r.title.toLowerCase());
+  return '<div class="recipe-card">'+
+    '<h3>'+h(r.title||'Untitled')+'</h3>'+
+    '<div class="recipe-badges">'+
+      (r.cuisine?'<span class="badge badge-cuisine">'+h(r.cuisine)+'</span>':'')+
+      (r.mealType?'<span class="badge badge-meal">'+h(r.mealType)+'</span>':'')+
+    '</div>'+
+    '<div class="recipe-meta"><span>⏱ '+(r.totalTimeMinutes??'?')+' min</span><span>👤 '+h(r.servings??'?')+'</span></div>'+
+    (usesLow.length?'<div class="uses-low">Uses up: '+usesLow.map(h).join(', ')+'</div>':'')+
+    '<ul class="ing-list">'+ings+'</ul>'+
+    '<ol class="recipe-steps">'+steps+'</ol>'+
+    '<div class="recipe-actions">'+
+      (missing.length?'<button class="btn btn-secondary" data-action="add-missing-grocery" data-idx="'+idx+'">+ '+missing.length+' to list</button>':'')+
+      (isSaved
+        ?'<button class="btn btn-secondary" disabled>✓ Saved</button>'
+        :'<button class="btn btn-secondary" data-action="save-recipe" data-idx="'+idx+'">🔖 Save</button>')+
+    '</div>'+
+  '</div>';
+}
+
+// ─── RENDER: COOKBOOK ─────────────────────────────────────────────────────
+function cookbookFiltered(){
+  let books=state.cookbook;
+  if(ui.cbSearch)          books=books.filter(r=>r.title.toLowerCase().includes(ui.cbSearch.toLowerCase()));
+  if(ui.cbMealFilter!=='All') books=books.filter(r=>r.mealType===ui.cbMealFilter);
+  if(ui.cbCanMake)         books=books.filter(r=>{ const a=recipeAvailability(r); return !a||a.missing===0; });
+  return books;
+}
+function renderCookbookCards(){
+  if(ui.generatingRandom) return '<div class="status-card"><div class="spinner" style="margin:0 auto 12px;"></div>Generating new recipes…</div>';
+  if(ui.generateError) return '<div class="error-card" style="margin-bottom:12px;">'+h(ui.generateError)+'</div>'+renderCookbookCardsInner();
+  return renderCookbookCardsInner();
+}
+function renderCookbookCardsInner(){
+  const books=cookbookFiltered();
+  return books.length===0
+    ?'<div class="status-card">'+(state.cookbook.length===0?'No saved recipes yet. Generate some above and hit 🔖 Save, or add one manually below.':'No recipes match your filters.')+'</div>'
+    :'<div class="recipe-grid">'+books.map(r=>renderCbCard(r)).join('')+'</div>';
+}
+function renderCookbook(){
+  const total=state.cookbook.length;
+  const canMakeCount=state.cookbook.filter(r=>{ const a=recipeAvailability(r); return a&&a.missing===0; }).length;
+  const legend='<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px;font-size:12px;font-weight:800;">'+
+    '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:4px;"></span>Ready to cook</span>'+
+    '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);margin-right:4px;"></span>Partial match</span>'+
+    '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--orange);margin-right:4px;"></span>Need to shop</span>'+
+  '</div>';
+  const statsLine=total>0
+    ?'<div style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:14px;">'+
+        total+' recipe'+(total===1?'':'s')+
+        (canMakeCount>0?' · <span style="color:var(--green);font-weight:800;">✅ '+canMakeCount+' you can make right now</span>':'')+
+      '</div>'
+    :'';
+  const mealFilterBtns=['All',...MEAL_TYPES_FILTER.slice(1)].map(m=>
+    '<button class="pill-btn '+(ui.cbMealFilter===m?'active':'')+'" data-action="set-cb-meal" data-val="'+m+'">'+m+'</button>').join('');
+  const canMakeBtn='<button class="pill-btn '+(ui.cbCanMake?'active':'')+'" data-action="toggle-cb-can-make">✅ Can make now</button>';
+  return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">'+
+    '<div style="font-family:\'Bitter\',serif;font-size:20px;font-weight:700;flex:1;">📖 Cookbook</div>'+
+    '<button class="btn btn-secondary" data-action="open-add-cookbook">+ Add recipe</button>'+
+    '<button class="btn btn-primary" data-action="generate-random-recipes" '+(ui.generatingRandom?'disabled':'')+' style="display:flex;align-items:center;gap:5px;">'+
+      (ui.generatingRandom?'<span class="spinner" style="width:14px;height:14px;border-width:2px;margin:0;"></span> Generating…':'✦ Generate more')+
+    '</button>'+
+  '</div>'+
+  statsLine+legend+
+  '<div class="toolbar" style="margin-bottom:12px;">'+
+    '<div class="search-box" style="flex:1;"><span class="search-icon">🔍</span>'+
+      '<input id="cb-search-input" data-live="cb-search" value="'+h(ui.cbSearch)+'" placeholder="Search cookbook…">'+
+    '</div>'+
+  '</div>'+
+  '<div class="pill-filters" style="margin-bottom:16px;">'+mealFilterBtns+canMakeBtn+'</div>'+
+  (ui.showAddCookbook?renderAddCookbookForm():'')+
+  '<div id="cookbook-cards">'+renderCookbookCards()+'</div>';
+}
+
+function renderCbCard(r){
+  const expanded=ui.expandedCbId===r.id;
+  const avail=recipeAvailability(r);
+
+  // Availability dot color
+  let dotColor='var(--border)';
+  let dotTitle='No ingredients listed';
+  if(avail){
+    if(avail.missing===0){dotColor='var(--green)';dotTitle='Ready to cook';}
+    else if(avail.have>=avail.total/2){dotColor='var(--gold)';dotTitle='Partial match';}
+    else{dotColor='var(--orange)';dotTitle='Need to shop';}
+  }
+  const dot='<span title="'+dotTitle+'" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+dotColor+';flex-shrink:0;margin-top:4px;"></span>';
+
+  // Availability bar
+  let availBar='';
+  if(avail){
+    const pct=Math.round((avail.have/avail.total)*100);
+    const barColor=avail.missing===0?'var(--green)':avail.have>=avail.total/2?'var(--gold)':'var(--orange)';
+    const label=avail.missing===0
+      ?'<span style="color:var(--green);font-weight:800;">✅ All '+avail.total+' ingredients in kitchen</span>'
+      :'<span><strong style="color:'+barColor+';">'+avail.have+'/'+avail.total+'</strong> <span style="color:var(--ink-soft);font-weight:700;">in kitchen</span></span>';
+    availBar='<div style="margin:8px 0 6px;">'+label+
+      '<div style="height:4px;background:var(--border);border-radius:3px;margin-top:5px;overflow:hidden;">'+
+        '<div style="height:100%;width:'+pct+'%;background:'+barColor+';border-radius:3px;"></div>'+
+      '</div></div>';
+  }
+
+  // Spice badge
+  const spiceColor={'Mild':'#4F7042','Medium':'#C2941F','Hot':'#A23E1C','Very Hot':'#7A0000'}[r.spiceLevel]||'var(--ink-soft)';
+  const spiceBadge=r.spiceLevel?'<span style="font-size:10px;font-weight:800;color:'+spiceColor+';border:1px solid '+spiceColor+'22;background:'+spiceColor+'11;padding:2px 8px;border-radius:8px;">🌶 '+h(r.spiceLevel)+'</span>':'';
+
+  // Expanded ingredients
+  let ingSection='';
+  if(expanded&&avail&&avail.items.length){
+    ingSection='<div style="margin:10px 0 6px;"><div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);margin-bottom:6px;">Ingredients</div>'+
+      '<ul class="ing-list">'+avail.items.map(i=>
+        '<li><span class="'+(i.have?'ing-have':'ing-miss')+'">'+(i.have?'✓':'·')+'</span> '+
+        h(i.name)+(i.quantity?' <span style="color:var(--ink-soft);font-size:11px;">'+h(i.quantity)+'</span>':'')+
+        '</li>').join('')+'</ul></div>';
+  } else if(expanded&&r.ingredients&&r.ingredients.length&&!avail){
+    ingSection='<div style="margin:10px 0 6px;"><ul class="ing-list">'+r.ingredients.map(i=>'<li>'+h(i.name||i)+(i.quantity?' <span style="color:var(--ink-soft);font-size:11px;">'+h(i.quantity)+'</span>':'')+'</li>').join('')+'</ul></div>';
+  }
+  const stepsSection=expanded&&r.steps&&r.steps.length
+    ?'<div style="margin:6px 0;"><div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);margin-bottom:6px;">Steps</div>'+
+      '<ol class="recipe-steps">'+r.steps.map(s=>'<li>'+h(s)+'</li>').join('')+'</ol></div>'
+    :'';
+
+  const addMissingBtn=avail&&avail.missing>0
+    ?'<button class="btn-icon" data-action="add-cookbook-missing" data-id="'+r.id+'" style="color:var(--green);border-color:var(--green);">🛒 Add '+avail.missing+' missing</button>'
+    :'';
+
+  return '<div class="cb-card" style="display:flex;flex-direction:column;">'+
+    '<div style="display:flex;gap:8px;">'+dot+
+      '<div style="flex:1;min-width:0;">'+
+        '<h3 style="margin-bottom:3px;">'+h(r.title)+'</h3>'+
+        '<div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-bottom:6px;">'+
+          [r.cuisine,r.mealType].filter(Boolean).map(h).join(' · ')+
+        '</div>'+
+        (r.description?'<div style="font-size:13px;color:var(--ink-soft);margin-bottom:8px;line-height:1.4;">'+h(r.description)+'</div>':'')+
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'+
+          (r.totalTimeMinutes?'<span style="font-size:12px;color:var(--ink-soft);font-weight:700;">⏱ '+r.totalTimeMinutes+' min</span>':'')+
+          (r.servings?'<span style="font-size:12px;color:var(--ink-soft);font-weight:700;">👤 '+r.servings+'</span>':'')+
+          spiceBadge+
+        '</div>'+
+        availBar+
+      '</div>'+
+    '</div>'+
+    ingSection+stepsSection+
+    '<div class="cb-actions" style="flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">'+
+      '<button class="btn-icon" data-action="toggle-cb-expand" data-id="'+r.id+'">'+(expanded?'▲ Less':'▼ View')+'</button>'+
+      addMissingBtn+
+      '<button class="btn-icon" data-action="plan-from-cookbook" data-title="'+h(r.title)+'" style="color:var(--ink-soft);">📅 Plan</button>'+
+      '<button class="btn-icon" data-action="delete-cookbook" data-id="'+r.id+'" style="color:var(--orange);margin-left:auto;">✕</button>'+
+    '</div>'+
+  '</div>';
+}
+
+function renderAddCookbookForm(){
+  const mealOpts=MEAL_TYPES_FILTER.slice(1).map(m=>'<option>'+m+'</option>').join('');
+  const cuisineOpts=state.settings.cuisines.map(c=>'<option>'+h(c)+'</option>').join('');
+  return '<form class="form-card" data-form="add-cookbook">'+
+    '<div style="font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--green);margin-bottom:12px;">+ New recipe</div>'+
+    '<div class="form-grid" style="margin-bottom:14px;">'+
+      '<div class="field" style="grid-column:span 2;"><label>Recipe name</label><input name="title" required placeholder="e.g. Lemon herb chicken"></div>'+
+      '<div class="field"><label>Cuisine</label><select name="cuisine">'+cuisineOpts+'</select></div>'+
+      '<div class="field"><label>Meal type</label><select name="mealType">'+mealOpts+'</select></div>'+
+      '<div class="field"><label>Total time (min)</label><input type="number" name="time" min="1" placeholder="30"></div>'+
+      '<div class="field"><label>Servings</label><input type="number" name="servings" min="1" placeholder="4"></div>'+
+      '<div class="field" style="grid-column:span 2;"><label>Ingredients <span style="font-weight:600;color:var(--ink-soft);">— one per line, e.g. "2 chicken breasts"</span></label>'+
+        '<textarea name="ingredients" rows="5" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-weight:600;resize:vertical;" '+
+          'placeholder="2 chicken breasts&#10;1 lemon, zested and juiced&#10;3 garlic cloves&#10;Fresh thyme&#10;Olive oil"></textarea></div>'+
+      '<div class="field" style="grid-column:span 2;"><label>Steps <span style="font-weight:600;color:var(--ink-soft);">— one per line</span></label>'+
+        '<textarea name="steps" rows="5" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-weight:600;resize:vertical;" '+
+          'placeholder="Preheat oven to 400°F.&#10;Season chicken with salt, pepper, and thyme.&#10;Sear in oven-safe pan for 3 min each side.&#10;Roast 20 min until cooked through.&#10;Rest 5 min before serving."></textarea></div>'+
+    '</div>'+
+    '<div class="form-actions">'+
+      '<button type="submit" class="btn btn-primary">Save to cookbook</button>'+
+      '<button type="button" class="btn btn-secondary" data-action="close-add-cookbook">Cancel</button>'+
+    '</div>'+
+  '</form>';
+}
+
+// ─── RENDER: HOME DASHBOARD ───────────────────────────────────────────────
+function greeting(){
+  const hr=new Date().getHours();
+  if(hr>=5&&hr<12) return 'Good morning';
+  if(hr>=12&&hr<17) return 'Good afternoon';
+  if(hr>=17&&hr<21) return 'Good evening';
+  return 'Good night';
+}
+function renderHome(){
+  const today=new Date();
+  const key=dateKey(today);
+  const dayData=state.planner[key]||{};
+  const dayFull=today.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const name=state.settings.householdName||'';
+
+  const mealCards=MEAL_SLOTS.map(slot=>{
+    const meal=dayData[slot.toLowerCase()]||'';
+    const emoji=SLOT_EMOJI[slot]||'';
+    const cbEntry=meal?state.cookbook.find(r=>r.title.toLowerCase()===meal.toLowerCase()):null;
+    const avail=cbEntry?recipeAvailability(cbEntry):null;
+    const availText=avail?(avail.missing===0
+      ?'<span style="color:var(--green);">✅ Ready to cook</span>'
+      :'<span style="color:var(--gold);">'+avail.have+'/'+avail.total+' ingredients in kitchen</span>'):'';
+    const cardAttrs=meal?'data-action="open-cooking-mode" data-date="'+key+'" data-slot="'+h(slot)+'" data-meal="'+h(meal)+'"':'';
+    return '<div class="today-meal-card '+(meal?'has-meal':'')+'" '+cardAttrs+'>'+
+      '<div class="today-meal-slot-label">'+emoji+' '+slot+'</div>'+
+      (meal
+        ?'<div class="today-meal-name">'+h(meal)+'</div>'+
+          (availText?'<div class="today-meal-avail">'+availText+'</div>':'')+
+          '<button class="today-cook-btn" data-action="open-cooking-mode" data-date="'+key+'" data-slot="'+h(slot)+'" data-meal="'+h(meal)+'">▶ Cook it</button>'
+        :'<div class="today-meal-empty">Nothing planned</div>'+
+          '<button class="today-plan-btn" data-action="set-tab" data-tab="planner">+ Plan today</button>')+
+    '</div>';
+  }).join('');
+
+  const expiring=state.inventory.filter(isExpiring);
+  const low=state.inventory.filter(i=>isLow(i)&&!isExpiring(i));
+  const useToday=state.inventory.filter(i=>{
+    if(!i.expiresOn) return false;
+    const d=new Date(i.expiresOn+'T00:00:00'),t=new Date();t.setHours(0,0,0,0);
+    return Math.round((d-t)/86400000)<=1;
+  });
+
+  const alertCards=[];
+  if(useToday.length){
+    alertCards.push('<div class="alert-card use-today">'+
+      '<div class="alert-card-label">🍽 Use today — don\'t waste it!</div>'+
+      '<div class="alert-card-body">'+useToday.map(i=>h(i.name)).join(' · ')+'</div>'+
+    '</div>');
+  }
+  if(expiring.length){
+    const names=expiring.filter(i=>!useToday.includes(i)).slice(0,5).map(i=>{
+      const d=new Date(i.expiresOn+'T00:00:00'),t=new Date();t.setHours(0,0,0,0);
+      const diff=Math.round((d-t)/86400000);
+      return h(i.name)+(diff>0?' ('+diff+'d)':'');
+    }).join(' · ');
+    if(names) alertCards.push('<div class="alert-card expiring">'+
+      '<div class="alert-card-label">⏰ Use soon</div>'+
+      '<div class="alert-card-body">'+names+'</div>'+
+    '</div>');
+  }
+  if(low.length){
+    alertCards.push('<div class="alert-card low-stock">'+
+      '<div class="alert-card-label">📉 Running low</div>'+
+      '<div class="alert-card-body" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
+        '<span>'+low.slice(0,5).map(i=>h(i.name)).join(' · ')+'</span>'+
+        '<button class="btn-ghost" data-action="add-all-low-stock" style="font-size:12px;color:var(--green);font-weight:800;padding:0;white-space:nowrap;">→ Add to grocery</button>'+
+      '</div>'+
+    '</div>');
+  }
+  if(!alertCards.length){
+    alertCards.push('<div class="alert-card" style="border-left-color:var(--green);">'+
+      '<div class="alert-card-label" style="color:var(--green);">✅ All good</div>'+
+      '<div class="alert-card-body">Your kitchen is stocked and nothing is expiring soon.</div>'+
+    '</div>');
+  }
+
+  return '<div class="home-greeting">'+
+    '<div class="home-greeting-name">'+greeting()+', '+h(name)+'! 👋</div>'+
+    '<div class="home-greeting-date">'+dayFull+'</div>'+
+  '</div>'+
+  '<div style="margin-bottom:24px;">'+
+    '<div class="home-section-title">Today\'s menu</div>'+
+    '<div class="today-menu-grid">'+mealCards+'</div>'+
+  '</div>'+
+  '<div>'+
+    '<div class="home-section-title">Kitchen alerts</div>'+
+    '<div class="alerts-grid">'+alertCards.join('')+'</div>'+
+  '</div>';
+}
+
+// ─── COOKING MODE MODAL ───────────────────────────────────────────────────
+function renderCookingModal(){
+  const root=document.getElementById('cooking-modal-root');
+  if(!root) return;
+  if(!ui.cookingModal){root.innerHTML='';return;}
+
+  const{date,slot,meal,checklist,generating,generatedRecipe,error}=ui.cookingModal;
+  const emoji=SLOT_EMOJI[slot]||'';
+  const cbRecipe=state.cookbook.find(r=>r.title.toLowerCase()===meal.toLowerCase());
+  const recipe=generatedRecipe||cbRecipe;
+
+  let body='',footer='';
+  const footerBase=
+    '<button class="btn btn-secondary" data-action="change-meal" data-date="'+h(date)+'" data-slot="'+h(slot)+'">Change meal</button>'+
+    '<button class="btn btn-secondary" data-action="close-cooking-modal">Done</button>';
+
+  if(generating){
+    body='<div class="cooking-body" style="text-align:center;padding:40px 22px;">'+
+      '<div class="spinner" style="margin:0 auto 16px;"></div>'+
+      '<div style="font-size:14px;font-weight:700;color:var(--ink-soft);">Generating recipe for "'+h(meal)+'"…</div>'+
+    '</div>';
+    footer='<div class="cooking-footer"><button class="btn btn-secondary" data-action="close-cooking-modal">Cancel</button></div>';
+
+  } else if(recipe){
+    const avail=recipeAvailability(recipe);
+    const ings=avail?avail.items:((recipe.ingredients||[]).map(i=>({name:i.name||String(i),quantity:i.quantity||'',have:false})));
+
+    const ingHtml=ings.length?'<div class="cooking-section-label">Ingredients</div>'+
+      ings.map(i=>{
+        const done=!!(checklist&&checklist[i.name]);
+        const cls=done?'done':(i.have?'have':'need');
+        const icon=done?'✓':(i.have?'✓':'·');
+        return '<div class="cook-ing-row" data-action="toggle-cooking-ingredient" data-name="'+h(i.name)+'">'+
+          '<div class="cook-check '+cls+'">'+icon+'</div>'+
+          '<span class="cook-ing-text '+(done?'done':'')+'">'+h(i.name)+'</span>'+
+          (i.quantity?'<span class="cook-ing-qty">'+h(i.quantity)+'</span>':'')+
+        '</div>';
+      }).join(''):'';
+
+    const stepsHtml=recipe.steps&&recipe.steps.length?'<div class="cooking-section-label">Steps</div>'+
+      recipe.steps.map((s,idx)=>'<div class="cook-step"><span class="cook-step-num">'+(idx+1)+'</span><span>'+h(s)+'</span></div>').join(''):'';
+
+    body='<div class="cooking-body">'+
+      (recipe.description?'<p style="color:var(--ink-soft);font-size:14px;font-weight:600;margin-bottom:2px;line-height:1.5;">'+h(recipe.description)+'</p>':'')+
+      ingHtml+stepsHtml+
+      (error?'<div class="error-card" style="margin-top:14px;">'+h(error)+'</div>':'')+
+    '</div>';
+
+    footer='<div class="cooking-footer">'+footerBase+
+      (!cbRecipe&&generatedRecipe?'<button class="btn btn-primary" data-action="save-generated-recipe">🔖 Save to cookbook</button>':'')+
+    '</div>';
+
+  } else {
+    // Manual entry with no saved recipe
+    body='<div class="cooking-body">'+
+      '<div class="cooking-empty-state">'+
+        '<div style="font-size:52px;margin-bottom:14px;">🍽</div>'+
+        '<div style="font-size:15px;font-weight:700;color:var(--ink-soft);margin-bottom:22px;">No saved recipe for "'+h(meal)+'" yet.</div>'+
+        '<div style="display:flex;flex-direction:column;gap:10px;max-width:340px;margin:0 auto;">'+
+          '<button class="btn btn-secondary" data-action="add-recipe-for-meal" data-date="'+h(date)+'" data-slot="'+h(slot)+'" data-title="'+h(meal)+'" style="padding:14px;font-size:14px;">+ Add recipe details</button>'+
+          '<button class="btn btn-primary" data-action="generate-meal-recipe" style="padding:14px;font-size:14px;">✦ Generate recipe with what I have</button>'+
+        '</div>'+
+      '</div>'+
+      (error?'<div class="error-card" style="margin-top:14px;">'+h(error)+'</div>':'')+
+    '</div>';
+    footer='<div class="cooking-footer">'+footerBase+'</div>';
+  }
+
+  root.innerHTML='<div class="cooking-overlay" id="pp-cooking-overlay">'+
+    '<div class="cooking-sheet">'+
+      '<div class="cooking-header">'+
+        '<button class="modal-close" data-action="close-cooking-modal" style="float:right;margin-top:-4px;">×</button>'+
+        '<div class="cooking-slot-label">'+emoji+' '+h(slot)+'</div>'+
+        '<div class="cooking-title">'+h(meal)+'</div>'+
+        (recipe?'<div class="cooking-meta-row">'+
+          [recipe.cuisine,recipe.totalTimeMinutes?recipe.totalTimeMinutes+' min':null,recipe.servings?'Serves '+recipe.servings:null,recipe.spiceLevel].filter(Boolean).map(h).join(' · ')+
+        '</div>':'')+
+      '</div>'+
+      body+footer+
+    '</div>'+
+  '</div>';
+}
+
+async function generateRecipeForMeal(){
+  const meal=ui.cookingModal.meal;
+  ui.cookingModal.generating=true;
+  ui.cookingModal.error='';
+  renderCookingModal();
+  const inventory=state.inventory.map(i=>i.name+(i.quantity?' ('+i.quantity+(i.unit?' '+h(i.unit):'')+')':'')).join(', ');
+  const system='You are a recipe generator. Given a meal name and the user\'s kitchen inventory, generate a practical recipe using as many of their available ingredients as possible. Respond ONLY with a raw JSON object (no markdown, no code fences): {"title":string,"cuisine":string,"mealType":string,"totalTimeMinutes":number,"servings":number,"description":string,"spiceLevel":string,"ingredients":[{"name":string,"quantity":string,"have":boolean}],"steps":[string],"missingIngredients":[string],"tags":[string]}. Mark have:true if the ingredient fuzzy-matches the inventory. Assume salt, pepper, oil, and water are always available. Keep steps to 4-6 clear imperative sentences.';
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,system,messages:[{role:'user',content:'Generate a recipe for: "'+meal+'"\n\nKitchen inventory: '+inventory}]})});
+    const data=await res.json();
+    let text=(data.content||[]).find(b=>b.type==='text')?.text||'';
+    text=text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+    const recipe=JSON.parse(text);
+    if(!recipe.title) throw new Error('empty');
+    ui.cookingModal.generatedRecipe={...recipe,id:uid(),dateAdded:new Date().toISOString(),usesLowStock:[]};
+    ui.cookingModal.generating=false;
+  }catch(e){
+    console.error(e);
+    ui.cookingModal.generating=false;
+    ui.cookingModal.error='Couldn\'t generate a recipe right now. Try again.';
+  }
+  renderCookingModal();
+}
+
+
+const SLOT_EMOJI={'Breakfast':'🌅','Lunch':'🍳','Dinner':'🌙'};
+
+async function generateRandomRecipes(){
+  ui.generatingRandom=true;
+  ui.generateError='';
+  // Full render FIRST so the button shows disabled + loading state immediately,
+  // regardless of which tab is currently showing
+  render();
+
+  const existing=state.cookbook.slice(0,40).map(r=>r.title).join(', ');
+  const system='You are a creative recipe generator for a home kitchen app. Generate exactly 6 diverse and practical recipes. Mix different cuisines, meal types, and difficulty levels. Avoid duplicating any of these existing recipes: '+existing+'. Respond ONLY with a raw JSON array of 6 recipe objects (no markdown, no fences): [{"title":string,"cuisine":string,"mealType":string,"totalTimeMinutes":number,"servings":number,"description":string,"spiceLevel":string,"ingredients":[{"name":string,"quantity":string,"have":false}],"steps":[string],"missingIngredients":[],"tags":[string]}]. Keep descriptions under 15 words. Keep steps to 4-6 imperative sentences each under 15 words. Include at least one Breakfast, one Lunch, and one Dinner recipe.';
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,system,
+        messages:[{role:'user',content:'Generate 6 diverse home recipes I haven\'t tried yet.'}]})
+    });
+    if(!res.ok) throw new Error('API error '+res.status);
+    const data=await res.json();
+    let text=(data.content||[]).find(b=>b.type==='text')?.text||'';
+    text=text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+    const s=text.indexOf('['),e=text.lastIndexOf(']');
+    if(s>-1&&e>-1) text=text.slice(s,e+1);
+    const recipes=JSON.parse(text);
+    if(!Array.isArray(recipes)||!recipes.length) throw new Error('empty response');
+    let added=0;
+    recipes.forEach(r=>{
+      if(!r.title) return;
+      const dup=state.cookbook.some(cb=>cb.title.toLowerCase()===r.title.toLowerCase());
+      if(!dup){ state.cookbook.push({...r,id:uid(),dateAdded:new Date().toISOString(),usesLowStock:[]}); added++; }
+    });
+    saveCookbook();
+    ui.generatingRandom=false;
+  }catch(err){
+    console.error('generateRandomRecipes error:', err);
+    ui.generatingRandom=false;
+    ui.generateError='Couldn\'t generate recipes right now. Please try again.';
+  }
+  render();
+}
+
+
+
+function renderRecipeBrowserList(){
+  if(ui.generatingRandom) return '<div class="status-card"><div class="spinner" style="margin:0 auto 12px;"></div>Generating new recipes…</div>';
+  if(ui.generateError) return '<div class="error-card" style="margin-bottom:12px;">'+h(ui.generateError)+'</div>'+renderRecipeBrowserListInner();
+  return renderRecipeBrowserListInner();
+}
+function renderRecipeBrowserListInner(){
+  let recipes=state.cookbook;
+  if(ui.browserSearch) recipes=recipes.filter(r=>r.title.toLowerCase().includes(ui.browserSearch.toLowerCase())||(r.cuisine&&r.cuisine.toLowerCase().includes(ui.browserSearch.toLowerCase())));
+  if(ui.browserMealFilter!=='All') recipes=recipes.filter(r=>r.mealType===ui.browserMealFilter);
+  if(!recipes.length) return '<div class="status-card" style="padding:24px;">No recipes found.</div>';
+  return '<div class="browser-grid">'+recipes.map(r=>{
+    const active=ui.browserPlanTitle===r.title;
+    const meta=[r.mealType,r.totalTimeMinutes?r.totalTimeMinutes+'min':null].filter(Boolean).join(' · ');
+    // Build slot picker (shown inline when active)
+    let picker='';
+    if(active){
+      const ws=getWeekStart(ui.plannerWeekOffset);
+      const today=new Date();today.setHours(0,0,0,0);
+      const chips=Array.from({length:7},(_,i)=>{
+        const d=new Date(ws);d.setDate(d.getDate()+i);
+        const key=dateKey(d);
+        const abbr=d.toLocaleDateString(undefined,{weekday:'short'});
+        const isToday=d.getTime()===today.getTime();
+        return MEAL_SLOTS.map(slot=>{
+          const taken=(state.planner[key]||{})[slot.toLowerCase()];
+          return '<button class="slot-pick-btn '+(taken?'taken':'')+'" '+
+            'data-action="browser-assign-slot" data-date="'+key+'" data-slot="'+slot+'" data-title="'+h(r.title)+'" '+
+            (taken?'title="Replace: '+h(taken)+'"':'')+'>'+
+            (isToday?'Today':abbr)+' '+SLOT_EMOJI[slot]+
+          '</button>';
+        }).join('');
+      }).join('');
+      picker='<div class="slot-picker"><span style="font-size:11px;font-weight:900;color:var(--green);margin-right:4px;">Add to:</span>'+chips+'</div>';
+    }
+    return '<div class="browser-card-wrap">'+
+      '<div class="browser-card '+(active?'active':'')+'" data-action="browser-plan-recipe" data-title="'+h(r.title)+'">'+
+        '<div style="flex:1;min-width:0;">'+
+          '<div class="browser-card-name">'+h(r.title)+'</div>'+
+          (meta?'<div class="browser-card-meta">'+h(meta)+'</div>':'')+
+        '</div>'+
+        '<button class="browser-plan-btn '+(active?'active':'')+'" data-action="browser-plan-recipe" data-title="'+h(r.title)+'">'+
+          (active?'✕ Cancel':'+ Plan')+
+        '</button>'+
+      '</div>'+picker+
+    '</div>';
+  }).join('')+'</div>';
+}
+
+function renderPlanner(){
+  const ws=getWeekStart(ui.plannerWeekOffset);
+  const we=new Date(ws);we.setDate(we.getDate()+6);
+  const label=ws.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' – '+we.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+  const today=new Date();today.setHours(0,0,0,0);
+  const hasAny=Array.from({length:7},(_,i)=>{const d=new Date(ws);d.setDate(d.getDate()+i);return state.planner[dateKey(d)];}).some(Boolean);
+
+  const days=Array.from({length:7},(_,i)=>{
+    const d=new Date(ws);d.setDate(d.getDate()+i);
+    const key=dateKey(d);
+    const isToday=d.getTime()===today.getTime();
+    const dayData=state.planner[key]||{};
+    const dayLabel=d.toLocaleDateString(undefined,{weekday:'long'});
+    const dateStr=d.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+    const slots=MEAL_SLOTS.map(slot=>{
+      const meal=dayData[slot.toLowerCase()]||'';
+      const emoji=SLOT_EMOJI[slot]||'';
+      // If meal exists, clicking opens cooking mode; if empty, opens recipe picker
+      const action=meal?'open-cooking-mode':'open-planner-modal';
+      const extraAttrs=meal?' data-meal="'+h(meal)+'"':'';
+      // Show a green dot if all ingredients are in kitchen
+      const cbEntry=meal?state.cookbook.find(r=>r.title.toLowerCase()===meal.toLowerCase()):null;
+      const avail=cbEntry?recipeAvailability(cbEntry):null;
+      const dot=avail&&avail.missing===0?'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;vertical-align:middle;flex-shrink:0;"></span>':'';
+      return '<div class="planner-slot" data-action="'+action+'" data-date="'+key+'" data-slot="'+h(slot)+'"'+extraAttrs+'>'+
+        '<div class="slot-label">'+emoji+' '+slot+'</div>'+
+        (meal
+          ?'<div class="slot-meal" style="display:flex;align-items:baseline;gap:4px;">'+dot+h(meal)+'</div>'
+          :'<div class="slot-add-btn">＋ Add</div>')+
+      '</div>';
+    }).join('');
+    return '<div class="planner-day">'+
+      '<div class="planner-day-header">'+
+        '<span class="day-label">'+dayLabel+'</span>'+
+        '<span class="day-date">'+dateStr+'</span>'+
+        (isToday?'<span class="today-chip">TODAY</span>':'')+
+      '</div>'+
+      '<div class="planner-slots">'+slots+'</div>'+
+    '</div>';
+  }).join('');
+
+  // Recipe Browser section
+  const mealPills=['All','Breakfast','Lunch','Dinner','Snack'].map(m=>
+    '<button class="pill-btn '+(ui.browserMealFilter===m?'active':'')+'" data-action="set-browser-meal" data-val="'+m+'">'+m+'</button>').join('');
+
+  const browser='<div class="recipe-browser-section">'+
+    '<div class="recipe-browser-header">'+
+      '<h3>📖 Recipe Browser</h3>'+
+      '<button class="btn btn-secondary" data-action="toggle-browser-add-form" style="font-size:12px;padding:7px 13px;">+ Add recipe</button>'+
+      '<button class="btn btn-primary" data-action="generate-random-recipes" '+(ui.generatingRandom?'disabled':'')+' style="font-size:12px;padding:7px 13px;display:flex;align-items:center;gap:5px;">'+
+        (ui.generatingRandom?'<span class="spinner" style="width:14px;height:14px;border-width:2px;margin:0;"></span> Generating…':'✦ Generate recipes')+
+      '</button>'+
+      '<div class="search-box" style="max-width:240px;"><span class="search-icon">🔍</span>'+
+        '<input id="browser-search-input" data-live="browser-search" value="'+h(ui.browserSearch)+'" placeholder="Search recipes…">'+
+      '</div>'+
+    '</div>'+
+    '<div class="pill-filters" style="margin-bottom:14px;">'+mealPills+'</div>'+
+    (ui.browserShowAddForm?'<div style="margin-bottom:14px;">'+renderAddCookbookForm()+'</div>':'')+
+    '<div id="recipe-browser-list">'+renderRecipeBrowserList()+'</div>'+
+  '</div>';
+
+  return '<div class="planner-header">'+
+    '<button class="planner-nav" data-action="planner-prev">‹</button>'+
+    '<div class="planner-title"><h2>'+label+'</h2><p>Tap any slot to add a meal</p></div>'+
+    '<button class="planner-nav" data-action="planner-next">›</button>'+
+  '</div>'+
+  (hasAny?'<div style="text-align:center;margin-bottom:16px;"><button class="btn btn-secondary" data-action="add-week-missing">🛒 Add week\'s missing to grocery</button></div>':'')+
+  '<div class="planner-grid">'+days+'</div>'+
+  browser;
+}
+
+// ─── RENDER: SETTINGS ─────────────────────────────────────────────────────
+function renderSettings(){
+  const sections=[
+    {id:'categories',label:'Categories'},
+    {id:'stores',label:'Stores'},
+    {id:'cuisines',label:'Cuisines'},
+    {id:'household',label:'Household'}
+  ];
+  const nav=sections.map(s=>'<button class="pill-btn '+(ui.settingsSection===s.id?'active':'')+'" data-action="set-settings-section" data-val="'+s.id+'">'+s.label+'</button>').join('');
+
+  let body='';
+  if(ui.settingsSection==='categories') body=renderSettingsCats();
+  else if(ui.settingsSection==='stores') body=renderSettingsStores();
+  else if(ui.settingsSection==='cuisines') body=renderSettingsCuisines();
+  else if(ui.settingsSection==='household') body=renderSettingsHousehold();
+
+  return '<div class="settings-nav">'+nav+'</div>'+body;
+}
+
+function renderSettingsCats(){
+  const cats=state.settings.categories;
+  const list=cats.map(cat=>{
+    const editing=ui.editCatId===cat.id;
+    const count=state.inventory.filter(i=>i.category===cat.name).length;
+    const swatches=SWATCH_COLORS.map(sc=>'<div class="color-swatch '+(ui.editCatColor===sc?'selected':'')+'" style="background:'+sc+';" data-action="set-edit-cat-color" data-val="'+sc+'"></div>').join('');
+    return '<div class="settings-row" style="flex-direction:column;align-items:stretch;">'+
+      '<div style="display:flex;align-items:center;gap:10px;">'+
+        '<span class="settings-dot" style="background:'+cat.color+';"></span>'+
+        '<span style="font-size:18px;">'+cat.emoji+'</span>'+
+        '<span class="settings-name">'+h(cat.name)+'</span>'+
+        '<span class="settings-count">'+count+' items</span>'+
+        '<button class="btn-ghost" data-action="start-edit-cat" data-id="'+cat.id+'">✏</button>'+
+        '<button class="btn-ghost" data-action="delete-cat" data-id="'+cat.id+'" style="color:var(--orange);">×</button>'+
+      '</div>'+
+      (editing?
+        '<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px;">'+
+          '<div class="form-grid" style="margin-bottom:10px;">'+
+            '<div class="field"><label>Name</label><input id="edit-cat-name" value="'+h(ui.editCatName)+'"></div>'+
+            '<div class="field"><label>Emoji</label><input id="edit-cat-emoji" value="'+h(ui.editCatEmoji)+'" style="font-size:18px;"></div>'+
+          '</div>'+
+          '<div class="color-swatches">'+swatches+'</div>'+
+          '<div class="form-actions">'+
+            '<button class="btn btn-primary" data-action="save-edit-cat">Save</button>'+
+            '<button class="btn btn-secondary" data-action="cancel-edit-cat">Cancel</button>'+
+          '</div>'+
+        '</div>'
+      :'')+
+    '</div>';
+  }).join('');
+
+  const addForm=ui.showAddCat?'<div class="form-card">'+
+    '<div class="form-grid" style="margin-bottom:10px;">'+
+      '<div class="field"><label>Name</label><input id="new-cat-name" value="'+h(ui.newCatName)+'" placeholder="e.g. Condiments"></div>'+
+      '<div class="field"><label>Emoji</label><input id="new-cat-emoji" value="'+h(ui.newCatEmoji)+'" style="font-size:18px;"></div>'+
+    '</div>'+
+    '<div class="color-swatches">'+SWATCH_COLORS.map(sc=>'<div class="color-swatch '+(ui.newCatColor===sc?'selected':'')+'" style="background:'+sc+';" data-action="set-new-cat-color" data-val="'+sc+'"></div>').join('')+'</div>'+
+    '<div class="form-actions">'+
+      '<button class="btn btn-primary" data-action="add-category">Add category</button>'+
+      '<button class="btn btn-secondary" data-action="cancel-add-cat">Cancel</button>'+
+    '</div>'+
+  '</div>':'';
+
+  return '<div class="settings-section-title">Categories</div>'+list+addForm+
+    (!ui.showAddCat?'<button class="btn btn-secondary" style="margin-top:10px;" data-action="open-add-cat">+ Add category</button>':'');
+}
+
+function renderSettingsStores(){
+  const stores=state.settings.stores;
+  const list=stores.length?stores.map(s=>
+    '<div class="settings-row"><span class="settings-name">🏪 '+h(s)+'</span>'+
+    '<button class="btn-ghost" data-action="remove-store" data-val="'+h(s)+'" style="color:var(--orange);">✕</button></div>'
+  ).join(''):
+  '<div class="status-card" style="padding:20px;">No stores yet. Stores you add to grocery items appear here automatically, or add them below.</div>';
+
+  return '<div class="settings-section-title">Stores</div>'+list+
+    '<div style="display:flex;gap:8px;margin-top:12px;">'+
+      '<input id="new-store-input" class="g-input" style="flex:1;padding:9px 12px;border-radius:9px;" placeholder="e.g. Farm Boy" data-live="new-store">'+
+      '<button class="btn btn-primary" data-action="add-store">Add</button>'+
+    '</div>';
+}
+
+function renderSettingsCuisines(){
+  const cuisines=state.settings.cuisines;
+  const list=cuisines.map(c=>
+    '<div class="settings-row"><span class="settings-name">🌍 '+h(c)+'</span>'+
+    '<button class="btn-ghost" data-action="remove-cuisine" data-val="'+h(c)+'" style="color:var(--orange);">✕</button></div>'
+  ).join('');
+  return '<div class="settings-section-title">Cuisines</div>'+list+
+    '<div style="display:flex;gap:8px;margin-top:12px;">'+
+      '<input id="new-cuisine-input" class="g-input" style="flex:1;padding:9px 12px;border-radius:9px;" placeholder="e.g. Ethiopian" data-live="new-cuisine">'+
+      '<button class="btn btn-primary" data-action="add-cuisine">Add</button>'+
+    '</div>';
+}
+
+function renderSettingsHousehold(){
+  return '<div class="settings-section-title">Household</div>'+
+    '<div class="form-card">'+
+      '<div class="field" style="margin-bottom:14px;"><label>Household name</label>'+
+        '<input id="household-name-input" value="'+h(ui.householdEdit||state.settings.householdName)+'" placeholder="e.g. The Smiths" data-live="household-name"></div>'+
+      '<button class="btn btn-primary" data-action="save-household">Save</button>'+
+    '</div>';
+}
+
+// ─── API: FIND RECIPES ────────────────────────────────────────────────────
+async function findRecipes(){
+  ui.recipeStatus='loading';ui.recipeError='';render();
+  const f=ui.cookFilters;
+  const cuisine=f.cuisine==='Other'?(f.customCuisine||'Any'):f.cuisine;
+  const customCuisineEl=document.getElementById('cook-custom-cuisine');
+  const notesEl=document.getElementById('cook-notes');
+  const actualCuisine=cuisine==='Other'&&customCuisineEl?customCuisineEl.value:cuisine;
+  const actualNotes=notesEl?notesEl.value:f.notes;
+  const payload={
+    inventory:state.inventory.map(i=>({name:i.name,quantity:i.quantity,unit:i.unit,location:i.location,low:isLow(i)})),
+    groceryList:state.grocery.filter(g=>!g.checked).map(g=>g.name),
+    mealType:f.mealType,cuisine:actualCuisine,
+    maxTotalTimeMinutes:f.maxTime==='any'?null:Number(f.maxTime),
+    preferUseWhatIHave:!!f.preferHave,extraNotes:actualNotes
+  };
+  const system='You are the recipe engine inside a home kitchen app called PantryPal. Respond ONLY with a raw JSON array — no markdown fences, no commentary — of exactly 3 recipe objects: [{"title":string,"cuisine":string,"mealType":string,"prepTimeMinutes":number,"cookTimeMinutes":number,"totalTimeMinutes":number,"servings":number,"ingredients":[{"name":string,"quantity":string,"have":boolean}],"missingIngredients":[string],"steps":[string],"usesLowStock":[string],"tags":[string]}]. Mark ingredient have:true if it loosely matches the inventory (plurals, synonyms OK). Assume salt, pepper, oil, water always available. Honor mealType/cuisine/maxTotalTimeMinutes as hard filters when not Any/null. If preferUseWhatIHave, strongly favor recipes with few missing ingredients, especially using low-stock items. Keep steps to 4-6 imperative sentences each under 15 words. Respond with strict JSON only.';
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,system,messages:[{role:'user',content:JSON.stringify(payload)}]})});
+    const data=await res.json();
+    let text=(data.content||[]).find(b=>b.type==='text')?.text||'';
+    text=text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+    const s=text.indexOf('[');const e=text.lastIndexOf(']');
+    if(s>-1&&e>-1) text=text.slice(s,e+1);
+    const recipes=JSON.parse(text);
+    if(!Array.isArray(recipes)||!recipes.length) throw new Error('empty');
+    ui.recipes=recipes;ui.recipeStatus='done';
+  }catch(err){
+    console.error(err);ui.recipeStatus='error';
+    ui.recipeError='Could not fetch recipes. Check your filters and try again.';
+  }
+  render();
+}
+
+// ─── EVENT DELEGATION ─────────────────────────────────────────────────────
+function partialUpdate(id,html){const el=document.getElementById(id);if(el)el.innerHTML=html;}
+
+document.addEventListener('click',e=>{
+  // Close modals when clicking the overlay backgrounds
+  if(e.target.id==='pp-modal-overlay'){
+    ui.plannerModal=null;ui.plannerSearch='';ui.plannerShowCreate=false;renderModal();return;
+  }
+  if(e.target.id==='pp-cooking-overlay'){
+    ui.cookingModal=null;renderCookingModal();return;
+  }
+  const el=e.target.closest('[data-action]');if(!el)return;
+  const a=el.dataset;
+  switch(a.action){
+    // nav
+    case 'set-tab': ui.tab=a.tab; if(a.tab==='cook'&&ui.recipeStatus==='idle') ui.tab='cook'; render(); break;
+    // kitchen
+    case 'open-add-item': ui.showAddItem=true;ui.editingItemId=null;render();break;
+    case 'cancel-add-item': ui.showAddItem=false;ui.editingItemId=null;render();break;
+    case 'edit-item':{const item=state.inventory.find(i=>i.id===a.id);if(item){ui.editingItemId=a.id;ui.showAddItem=true;render();}}break;
+    case 'delete-item': if(confirm('Remove '+( state.inventory.find(i=>i.id===a.id)?.name||'this item')+'?')){deleteItem(a.id);}break;
+    case 'adj-qty': adjustQty(a.id,Number(a.delta));break;
+    case 'quick-add-grocery':{const item=state.inventory.find(i=>i.id===a.id);if(item){addGroceryItem(item.name,item.category,'',true);saveGrocery();render();}}break;
+    case 'reset-kitchen-filters': ui.kitchenLoc='All';ui.kitchenExpiry='all';render();break;
+    case 'set-kitchen-loc': ui.kitchenLoc=a.val;ui.kitchenExpiry='all';render();break;
+    case 'set-kitchen-expiry': ui.kitchenExpiry=a.val;ui.kitchenLoc='All';render();break;
+    // grocery
+    case 'toggle-checked': toggleChecked(a.id);break;
+    case 'delete-grocery': deleteGrocery(a.id);break;
+    case 'clear-checked': clearChecked();break;
+    case 'add-all-low-stock': addAllLowStock();break;
+    case 'quick-add-grocery-form':{
+      const qInput=document.getElementById('grocery-quick-input');
+      const qQty=document.getElementById('grocery-quick-qty');
+      const qStore=document.getElementById('grocery-quick-store');
+      const name=(qInput?.value||'').trim();
+      if(name){addGroceryItem(name,ui.groceryQuickCat,'',false,qQty?.value||'',qStore?.value||'');saveGrocery();
+        if(qInput)qInput.value='';if(qQty)qQty.value='';if(qStore)qStore.value='';
+        ui.groceryQuickCat='Other';ui.groceryQuickCatBg='#E2DCCB';ui.groceryQuickCatColor='#6B7160';ui.groceryQuickEmoji='📦';
+        render();}
+    }break;
+    case 'close-add-grocery': ui.showAddGrocery=false;render();break;
+    case 'set-grocery-group': ui.groceryGroup=a.val;render();break;
+    case 'toggle-show-checked': ui.showChecked=!ui.showChecked;render();break;
+    case 'share-grocery':{
+      const text=state.grocery.filter(g=>!g.checked).map(g=>(g.quantity?g.quantity+' ':'')+g.name+(g.store?' ('+g.store+')':'')).join('\n');
+      navigator.share({title:'Grocery List',text}).catch(()=>{});
+    }break;
+    case 'copy-grocery':{
+      const text=state.grocery.filter(g=>!g.checked).map(g=>(g.quantity?g.quantity+' ':'')+g.name+(g.store?' ('+g.store+')':'')).join('\n');
+      navigator.clipboard.writeText(text).then(()=>alert('Copied to clipboard!')).catch(()=>{});
+    }break;
+    // cook
+    case 'find-recipes': findRecipes();break;
+    case 'use-what-i-have': ui.cookFilters.mealType='Any';ui.cookFilters.cuisine='Any';ui.cookFilters.maxTime='any';ui.cookFilters.preferHave=true;findRecipes();break;
+    case 'add-missing-grocery': addMissingToGrocery(Number(a.idx));break;
+    case 'save-recipe':{const r=ui.recipes[Number(a.idx)];if(r){saveRecipe(r);render();}}break;
+    // cookbook
+    case 'open-add-cookbook': ui.showAddCookbook=true;render();break;
+    case 'close-add-cookbook': ui.showAddCookbook=false;render();break;
+    case 'toggle-cb-expand': ui.expandedCbId=(ui.expandedCbId===a.id?null:a.id);render();break;
+    case 'delete-cookbook': if(confirm('Remove this recipe?')){deleteCookbookItem(a.id);}break;
+    case 'set-cb-meal': ui.cbMealFilter=a.val;render();break;
+    case 'toggle-cb-can-make': ui.cbCanMake=!ui.cbCanMake;render();break;
+    case 'add-cookbook-missing': addCookbookMissingToGrocery(a.id);break;
+    case 'plan-from-cookbook':
+      ui.tab='planner';
+      // Pre-seed planner search so user can drop it into a slot immediately
+      ui.plannerSearch=a.title||'';
+      render();
+      break;
+    // planner
+    case 'open-planner-modal':
+      ui.plannerModal={date:a.date,slot:a.slot};
+      ui.plannerSearch='';ui.plannerShowCreate=false;
+      ui.plannerMealFilter= a.slot==='Breakfast'?'Breakfast':a.slot==='Lunch'?'Lunch':a.slot==='Dinner'?'Dinner':'All';
+      renderModal();break;
+    case 'planner-filter-meal': ui.plannerMealFilter=a.val; partialUpdate('planner-modal-body',renderPlannerModalBody()); break;
+    case 'close-modal': ui.plannerModal=null;ui.plannerSearch='';ui.plannerShowCreate=false;renderModal();break;
+    case 'planner-pick-recipe':
+      setPlannerMeal(a.date,a.slot,a.title);break;
+    case 'planner-manual-add':{
+      const title=ui.plannerSearch.trim();
+      if(title) setPlannerMeal(a.date,a.slot,title);
+      else{ui.plannerModal=null;renderModal();}
+    }break;
+    case 'planner-toggle-create':
+      ui.plannerShowCreate=!ui.plannerShowCreate;
+      partialUpdate('planner-modal-body', renderPlannerModalBody());
+      if(ui.plannerShowCreate) setTimeout(()=>{const t=document.getElementById('pr-title');if(t)t.focus();},0);
+      break;
+    case 'confirm-planner-meal':{
+      // legacy path kept for safety
+      const custInp=document.getElementById('planner-custom-input');
+      const title=(custInp?.value||ui.plannerSearch||'').trim();
+      if(title) setPlannerMeal(a.date,a.slot,title);
+      else{ui.plannerModal=null;renderModal();}
+    }break;
+    case 'confirm-planner-add-recipe':{
+      const titleEl=document.getElementById('pr-title');
+      const title=(titleEl?.value||ui.plannerSearch||'').trim();
+      if(!title){titleEl?.focus();break;}
+      const mealEl=document.getElementById('pr-meal');
+      const cuisineEl=document.getElementById('pr-cuisine');
+      const timeEl=document.getElementById('pr-time');
+      const servEl=document.getElementById('pr-servings');
+      const ingEl=document.getElementById('pr-ingredients');
+      const stepsEl=document.getElementById('pr-steps');
+      const ingredients=(ingEl?.value||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>({name:l,quantity:'',have:false}));
+      const steps=(stepsEl?.value||'').split('\n').map(l=>l.trim()).filter(Boolean);
+      const recipe={
+        title,cuisine:cuisineEl?.value||'',mealType:mealEl?.value||a.slot,
+        totalTimeMinutes:parseInt(timeEl?.value)||0,servings:parseInt(servEl?.value)||4,
+        ingredients,steps,missingIngredients:[],usesLowStock:[],tags:[],
+        dateAdded:new Date().toISOString()
+      };
+      saveRecipe(recipe);
+      setPlannerMeal(a.date,a.slot,title);
+    }break;
+    case 'clear-planner-meal': clearPlannerMeal(a.date,a.slot);break;
+    case 'planner-prev': ui.plannerWeekOffset--;render();break;
+    case 'planner-next': ui.plannerWeekOffset++;render();break;
+    case 'add-week-missing': addWeekMissingToGrocery();break;
+    // cooking mode
+    case 'open-cooking-mode':
+      ui.cookingModal={date:a.date,slot:a.slot,meal:a.meal,checklist:{},generating:false,generatedRecipe:null,error:''};
+      renderCookingModal();break;
+    case 'close-cooking-modal':
+      ui.cookingModal=null;renderCookingModal();break;
+    case 'toggle-cooking-ingredient':
+      if(ui.cookingModal){ui.cookingModal.checklist[a.name]=!ui.cookingModal.checklist[a.name];renderCookingModal();}break;
+    case 'generate-meal-recipe':
+      if(ui.cookingModal) generateRecipeForMeal();break;
+    case 'save-generated-recipe':
+      if(ui.cookingModal&&ui.cookingModal.generatedRecipe){
+        saveRecipe(ui.cookingModal.generatedRecipe);
+        ui.cookingModal.generatedRecipe=null; // it's now in cookbook; next open will find it
+        renderCookingModal();render();
+      }break;
+    case 'add-recipe-for-meal':
+      // Open the planner recipe picker with create form pre-filled
+      ui.cookingModal=null;renderCookingModal();
+      ui.plannerModal={date:a.date,slot:a.slot};
+      ui.plannerSearch=a.title||'';ui.plannerShowCreate=true;
+      renderModal();break;
+    case 'change-meal':
+      ui.cookingModal=null;renderCookingModal();
+      ui.plannerModal={date:a.date,slot:a.slot};
+      ui.plannerSearch='';ui.plannerShowCreate=false;
+      ui.plannerMealFilter=a.slot==='Breakfast'?'Breakfast':a.slot==='Lunch'?'Lunch':a.slot==='Dinner'?'Dinner':'All';
+      renderModal();break;
+    // recipe browser (within planner tab)
+    case 'browser-plan-recipe':
+      ui.browserPlanTitle=(ui.browserPlanTitle===a.title)?null:a.title;
+      partialUpdate('recipe-browser-list',renderRecipeBrowserList());
+      break;
+    case 'browser-assign-slot':
+      setPlannerMeal(a.date,a.slot,a.title);
+      ui.browserPlanTitle=null;
+      break;
+    case 'generate-random-recipes': if(!ui.generatingRandom) generateRandomRecipes();break;
+    case 'toggle-browser-add-form':
+      ui.browserShowAddForm=!ui.browserShowAddForm;
+      render();break;
+    case 'set-browser-meal':
+      ui.browserMealFilter=a.val;
+      partialUpdate('recipe-browser-list',renderRecipeBrowserList());
+      break;
+    // settings
+    case 'set-settings-section': ui.settingsSection=a.val;render();break;
+    case 'start-edit-cat':{const cat=state.settings.categories.find(c=>c.id===a.id);if(cat){ui.editCatId=a.id;ui.editCatName=cat.name;ui.editCatEmoji=cat.emoji;ui.editCatColor=cat.color;render();}}break;
+    case 'cancel-edit-cat': ui.editCatId=null;render();break;
+    case 'save-edit-cat':{
+      const n=document.getElementById('edit-cat-name');const em=document.getElementById('edit-cat-emoji');
+      if(n)ui.editCatName=n.value;if(em)ui.editCatEmoji=em.value;saveEditCat();
+    }break;
+    case 'set-edit-cat-color': ui.editCatColor=a.val;render();break;
+    case 'set-new-cat-color': ui.newCatColor=a.val;render();break;
+    case 'open-add-cat': ui.showAddCat=true;render();break;
+    case 'cancel-add-cat': ui.showAddCat=false;render();break;
+    case 'add-category':{
+      const n=document.getElementById('new-cat-name');const em=document.getElementById('new-cat-emoji');
+      if(n)ui.newCatName=n.value;if(em)ui.newCatEmoji=em.value;addCategory();
+    }break;
+    case 'delete-cat': if(confirm('Delete this category?')){deleteCategory(a.id);}break;
+    case 'add-store': addStore();break;
+    case 'remove-store': removeStore(a.val);break;
+    case 'add-cuisine': addCuisine();break;
+    case 'remove-cuisine': removeCuisine(a.val);break;
+    case 'save-household':{const inp=document.getElementById('household-name-input');if(inp)ui.householdEdit=inp.value;saveHousehold();}break;
+  }
+});
+
+document.addEventListener('input',e=>{
+  const el=e.target;const live=el.dataset.live;
+  if(!live) return;
+  if(live==='kitchen-search'){
+    ui.kitchenSearch=el.value;
+    partialUpdate('kitchen-shelves', renderKitchenShelves());
+  }
+  else if(live==='grocery-search'){
+    ui.grocerySearch=el.value;
+    partialUpdate('grocery-list-body', renderGroceryBody());
+  }
+  else if(live==='cb-search'){
+    ui.cbSearch=el.value;
+    partialUpdate('cookbook-cards', renderCookbookCards());
+  }
+  else if(live==='grocery-quick-name'){
+    const name=el.value;
+    const guess=guessCategory(name);
+    const cat=getCat(guess);
+    ui.groceryQuickCat=guess;ui.groceryQuickCatBg=cat.bg;ui.groceryQuickCatColor=cat.color;ui.groceryQuickEmoji=cat.emoji;
+    const preview=document.getElementById('grocery-cat-preview');
+    if(preview){preview.textContent=cat.emoji+' '+guess;preview.style.background=cat.bg;preview.style.color=cat.color;}
+  }
+  else if(live==='item-name-auto'){
+    const sel=document.getElementById('item-cat-select');
+    if(sel&&!sel.dataset.touched){sel.value=guessCategory(el.value);}
+  }
+  else if(live==='new-store'){ui.newStore=el.value;}
+  else if(live==='new-cuisine'){ui.newCuisine=el.value;}
+  else if(live==='household-name'){ui.householdEdit=el.value;}
+  else if(live==='planner-search'){
+    ui.plannerSearch=el.value;
+    partialUpdate('planner-modal-body', renderPlannerModalBody());
+  }
+  else if(live==='browser-search'){
+    ui.browserSearch=el.value;
+    partialUpdate('recipe-browser-list', renderRecipeBrowserList());
+  }
+});
+
+document.addEventListener('change',e=>{
+  const el=e.target;const ch=el.dataset.change;
+  if(!ch) return;
+  if(ch==='g-qty'){updateGroceryField(el.dataset.id,'quantity',el.value);}
+  else if(ch==='g-store'){updateGroceryField(el.dataset.id,'store',el.value);}
+  else if(ch==='g-cat'){
+    updateGroceryField(el.dataset.id,'category',el.value);
+    // Partial update so border colour and select background both reflect new category
+    partialUpdate('grocery-list-body', renderGroceryBody());
+  }
+  else if(ch==='grocery-store-filter'){ui.groceryStore=el.value;render();}
+  else if(ch==='cook-meal'){ui.cookFilters.mealType=el.value;}
+  else if(ch==='cook-cuisine'){ui.cookFilters.cuisine=el.value;render();}
+  else if(ch==='cook-time'){ui.cookFilters.maxTime=el.value;}
+  else if(ch==='cook-prefer-have'){ui.cookFilters.preferHave=el.checked;}
+  else if(ch==='item-cat') {const sel=document.getElementById('item-cat-select');if(sel)sel.dataset.touched='1';}
+});
+
+document.addEventListener('submit',e=>{
+  e.preventDefault();
+  const form=e.target.closest('[data-form]');if(!form)return;
+  const fd=new FormData(form);
+  if(form.dataset.form==='add-item'){addOrUpdateItem(fd);}
+  else if(form.dataset.form==='add-grocery'){
+    addGroceryItem((fd.get('name')||'').trim(),fd.get('category')||'Other',(fd.get('note')||'').trim(),false,(fd.get('quantity')||'').trim(),(fd.get('store')||'').trim());
+    ui.showAddGrocery=false;saveGrocery();render();
+  }
+  else if(form.dataset.form==='add-cookbook'){addManualRecipe(fd);ui.browserShowAddForm=false;}
+});
+
+// ─── INIT ─────────────────────────────────────────────────────────────────
+loadState();
+render();
+</script>
+</body>
+</html>
