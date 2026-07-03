@@ -383,6 +383,7 @@ let state={
 async function loadState(){
   const data = await api('GET','state');
   if(data===null) return false;
+  const isNewAccount = data.cookbook===undefined;
   state.inventory = data.inventory || [];
   state.grocery   = data.grocery || [];
   state.cookbook  = data.cookbook || [];
@@ -393,8 +394,9 @@ async function loadState(){
   if(!state.settings.stores)     state.settings.stores = [];
   if(!state.settings.cuisines)   state.settings.cuisines = defaultSettings().cuisines;
   if(!state.settings.members)    state.settings.members = ['T','B'];
-  // pre-seed cookbook on first install
-  if(state.cookbook.length===0){
+  // pre-seed cookbook only for a brand-new account (no cookbook row saved yet) —
+  // never on an empty array, which could mean the user intentionally cleared it
+  if(isNewAccount){
     state.cookbook = SEED_RECIPES.map(r=>({...r}));
     saveCookbook();
   }
