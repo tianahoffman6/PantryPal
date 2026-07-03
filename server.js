@@ -149,8 +149,10 @@ function auth(req, res, next) {
   }
 }
 
-function signToken(user) {
-  return jwt.sign({ userId: user.id, familyId: user.family_id }, JWT_SECRET, { expiresIn: '30d' });
+async function signToken(user) {
+  const { rows } = await pool.query('SELECT is_owner_family FROM families WHERE id = $1', [user.family_id]);
+  const isOwnerFamily = !!(rows[0] && rows[0].is_owner_family);
+  return jwt.sign({ userId: user.id, familyId: user.family_id, isOwnerFamily }, JWT_SECRET, { expiresIn: '30d' });
 }
 
 app.post('/api/login', async (req, res) => {
@@ -161,7 +163,12 @@ app.post('/api/login', async (req, res) => {
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
-  res.json({ token: signToken(user) });
+  res.json({ token: await signToken(user) });
+});
+
+app.get('/api/me', auth, async (req, res) => {
+  const { rows } = await pool.query('SELECT email FROM users WHERE id = $1', [req.user.userId]);
+  res.json({ email: rows[0] ? rows[0].email : null, familyId: req.user.familyId, isOwnerFamily: !!req.user.isOwnerFamily });
 });
 
 app.post('/api/signup', async (req, res) => {
@@ -207,7 +214,7 @@ app.post('/api/signup', async (req, res) => {
     }
     await client.query('UPDATE invites SET redeemed_by_user_id = $1 WHERE code = $2', [user.id, inviteCode]);
     await client.query('COMMIT');
-    res.json({ token: signToken(user) });
+    res.json({ token: await signToken(user) });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     throw e;
@@ -217,13 +224,36 @@ app.post('/api/signup', async (req, res) => {
 });
 
 app.post('/api/invites', auth, async (req, res) => {
+  const { newFamily } = req.body || {};
+  if (newFamily && !req.user.isOwnerFamily) {
+    return res.status(403).json({ error: 'Only the owner household can create new-family invites' });
+  }
+  const scopeFamilyId = newFamily ? null : req.user.familyId;
   const code = crypto.randomBytes(16).toString('hex');
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   await pool.query(
     'INSERT INTO invites (code, family_id, created_by_user_id, expires_at) VALUES ($1, $2, $3, $4)',
-    [code, req.user.familyId, req.user.userId, expiresAt]
+    [code, scopeFamilyId, req.user.userId, expiresAt]
   );
-  res.json({ code, expiresAt });
+  res.json({ code, expiresAt, newFamily: scopeFamilyId === null });
+});
+
+app.get('/api/family/members', auth, async (req, res) => {
+  const { rows } = await pool.query(
+    'SELECT email, role, created_at FROM users WHERE family_id = $1 ORDER BY created_at',
+    [req.user.familyId]
+  );
+  res.json({ members: rows });
+});
+
+app.get('/api/admin/families', auth, async (req, res) => {
+  if (!req.user.isOwnerFamily) return res.status(403).json({ error: 'Owner access only' });
+  const { rows } = await pool.query(`
+    SELECT f.id, f.name, f.credits, f.is_owner_family, f.created_at, COUNT(u.id)::int AS member_count
+    FROM families f LEFT JOIN users u ON u.family_id = f.id
+    GROUP BY f.id ORDER BY f.created_at ASC
+  `);
+  res.json({ families: rows });
 });
 
 app.get('/api/state', auth, async (req, res) => {

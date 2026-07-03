@@ -363,6 +363,11 @@ async function api(method,path,body){
 function signOut(){
   localStorage.removeItem('pp-token');
   authToken=null;
+  ui.meLoaded=false;ui.isOwnerFamily=false;
+  ui.membersLoaded=false;ui.familyMembers=[];
+  ui.creditsLoaded=false;ui.credits=null;
+  ui.adminLoaded=false;ui.adminFamilies=[];
+  ui.inviteCode='';ui.newInviteCode='';
   renderLogin();
 }
 
@@ -448,7 +453,9 @@ let ui={
   // auth
   loginError:'', syncError:'', authMode:'login', signupError:'',
   inviteCode:'', inviteExpires:'', invitingLoading:false,
-  credits:null, creditsLoaded:false, checkoutLoading:false, checkoutMessage:''
+  credits:null, creditsLoaded:false, checkoutLoading:false, checkoutMessage:'',
+  familyMembers:[], membersLoaded:false, isOwnerFamily:false, meLoaded:false,
+  adminFamilies:[], adminLoaded:false, newInviteCode:'', newInviteExpires:'', newInviteLoading:false
 };
 
 // ─── UTILS ────────────────────────────────────────────────────────────────
@@ -2120,6 +2127,7 @@ function renderPlanner(){
 
 // ─── RENDER: SETTINGS ─────────────────────────────────────────────────────
 function renderSettings(){
+  if(!ui.meLoaded) loadMe();
   const sections=[
     {id:'categories',label:'Categories'},
     {id:'stores',label:'Stores'},
@@ -2127,6 +2135,7 @@ function renderSettings(){
     {id:'household',label:'Household'},
     {id:'family',label:'Family & Billing'}
   ];
+  if(ui.isOwnerFamily) sections.push({id:'admin',label:'Admin'});
   const nav=sections.map(s=>'<button class="pill-btn '+(ui.settingsSection===s.id?'active':'')+'" data-action="set-settings-section" data-val="'+s.id+'">'+s.label+'</button>').join('');
 
   let body='';
@@ -2135,6 +2144,7 @@ function renderSettings(){
   else if(ui.settingsSection==='cuisines') body=renderSettingsCuisines();
   else if(ui.settingsSection==='household') body=renderSettingsHousehold();
   else if(ui.settingsSection==='family') body=renderSettingsFamily();
+  else if(ui.settingsSection==='admin') body=ui.isOwnerFamily?renderSettingsAdmin():renderSettingsCats();
 
   return '<div class="settings-nav">'+nav+'</div>'+body;
 }
@@ -2225,8 +2235,19 @@ function renderSettingsHousehold(){
 
 function renderSettingsFamily(){
   if(!ui.creditsLoaded) loadCredits();
+  if(!ui.membersLoaded) loadMembers();
   const creditsRow = ui.credits===null ? 'Unlimited' : (ui.credits+' recipe generation'+(ui.credits===1?'':'s')+' remaining');
+  const membersList = ui.familyMembers.map(m=>
+    '<div class="settings-row"><span style="font-weight:700;">'+h(m.email)+'</span>'+
+      '<span style="color:var(--ink-soft);font-size:12px;">'+h(m.role)+' · joined '+h(new Date(m.created_at).toLocaleDateString())+'</span></div>'
+  ).join('');
   return '<div class="settings-section-title">Family & Billing</div>'+
+    '<div class="form-card" style="margin-bottom:16px;">'+
+      '<div class="field">'+
+        '<label>Household members</label>'+
+        (membersList||'<p style="color:var(--ink-soft);font-size:13px;">Loading…</p>')+
+      '</div>'+
+    '</div>'+
     '<div class="form-card" style="margin-bottom:16px;">'+
       '<div class="field" style="margin-bottom:14px;"><label>Invite a family member</label>'+
         '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">Generate a code so someone else can sign in to your household\'s shared data.</p>'+
@@ -2245,6 +2266,36 @@ function renderSettingsFamily(){
     '</div>';
 }
 
+function renderSettingsAdmin(){
+  if(!ui.adminLoaded) loadAdminFamilies();
+  const rows = ui.adminFamilies.map(f=>
+    '<div class="settings-row"><span style="font-weight:700;">'+h(f.name)+(f.is_owner_family?' (you)':'')+'</span>'+
+      '<span style="color:var(--ink-soft);font-size:12px;">'+(f.credits===null?'Unlimited':f.credits+' credits')+' · '+f.member_count+' member'+(f.member_count===1?'':'s')+' · joined '+h(new Date(f.created_at).toLocaleDateString())+'</span></div>'
+  ).join('');
+  return '<div class="settings-section-title">Admin</div>'+
+    '<div class="form-card" style="margin-bottom:16px;">'+
+      '<div class="field" style="margin-bottom:14px;"><label>Onboard a new family</label>'+
+        '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">Generate an invite code for a brand-new, independent family (separate data, starts with 0 credits).</p>'+
+        '<button class="btn btn-primary" data-action="generate-new-family-invite" '+(ui.newInviteLoading?'disabled':'')+'>'+(ui.newInviteLoading?'Generating…':'Generate new-family invite code')+'</button>'+
+        (ui.newInviteCode?'<div class="form-card" style="margin-top:12px;background:var(--bg);"><code style="font-size:15px;font-weight:800;">'+h(ui.newInviteCode)+'</code>'+
+          '<p style="color:var(--ink-soft);font-size:12px;margin-top:6px;">Expires '+h(new Date(ui.newInviteExpires).toLocaleDateString())+'.</p></div>':'')+
+      '</div>'+
+    '</div>'+
+    '<div class="form-card">'+
+      '<div class="field">'+
+        '<label>All households</label>'+
+        (rows||'<p style="color:var(--ink-soft);font-size:13px;">Loading…</p>')+
+      '</div>'+
+    '</div>';
+}
+
+async function loadMe(){
+  ui.meLoaded=true;
+  const data=await api('GET','me');
+  if(data) ui.isOwnerFamily=!!data.isOwnerFamily;
+  render();
+}
+
 async function loadCredits(){
   ui.creditsLoaded=true;
   const data=await api('GET','credits');
@@ -2252,11 +2303,33 @@ async function loadCredits(){
   render();
 }
 
+async function loadMembers(){
+  ui.membersLoaded=true;
+  const data=await api('GET','family/members');
+  if(data) ui.familyMembers=data.members;
+  render();
+}
+
+async function loadAdminFamilies(){
+  ui.adminLoaded=true;
+  const data=await api('GET','admin/families');
+  if(data) ui.adminFamilies=data.families;
+  render();
+}
+
 async function generateInvite(){
   ui.invitingLoading=true;render();
-  const data=await api('POST','invites');
+  const data=await api('POST','invites',{});
   ui.invitingLoading=false;
   if(data){ ui.inviteCode=data.code; ui.inviteExpires=data.expiresAt; }
+  render();
+}
+
+async function generateNewFamilyInvite(){
+  ui.newInviteLoading=true;render();
+  const data=await api('POST','invites',{newFamily:true});
+  ui.newInviteLoading=false;
+  if(data){ ui.newInviteCode=data.code; ui.newInviteExpires=data.expiresAt; }
   render();
 }
 
@@ -2496,6 +2569,7 @@ document.addEventListener('click',e=>{
     case 'retry-boot': boot();break;
     case 'set-auth-mode': ui.authMode=a.val;ui.loginError='';ui.signupError='';renderLogin();break;
     case 'generate-invite': generateInvite();break;
+    case 'generate-new-family-invite': generateNewFamilyInvite();break;
     case 'buy-credits': buyCredits();break;
   }
 });
