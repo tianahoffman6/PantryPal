@@ -23,7 +23,11 @@ const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 const stripe = STRIPE_SECRET_KEY ? require('stripe')(STRIPE_SECRET_KEY) : null;
 
 const STATE_KEYS = ['inventory', 'grocery', 'cookbook', 'planner', 'settings'];
-const CREDIT_PACK = { credits: 50, amountCents: 500 };
+const CREDIT_PACKS = {
+  small:  { credits: 50,  amountCents: 500,  label: '50 credits — $5' },
+  medium: { credits: 150, amountCents: 1200, label: '150 credits — $12' },
+  large:  { credits: 500, amountCents: 3500, label: '500 credits — $35' },
+};
 
 // ─── Stripe webhook — MUST be registered before express.json() so the body
 // arrives raw (signature verification needs the exact bytes Stripe signed). ───
@@ -40,9 +44,16 @@ app.post('/api/stripe-webhook', express.raw({ type: 'application/json' }), async
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     const familyId = Number(session.metadata && session.metadata.familyId);
+    // Pack size travels in session metadata; fall back to the original 50-credit pack
+    // for any session created before multi-pack support shipped.
+    const credits = Number(session.metadata && session.metadata.credits) || 50;
     const inserted = await pool.query('INSERT INTO stripe_events (id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING id', [event.id]);
     if (inserted.rows.length && familyId) {
-      await pool.query('UPDATE families SET credits = credits + $1 WHERE id = $2', [CREDIT_PACK.credits, familyId]);
+      await pool.query('UPDATE families SET credits = credits + $1 WHERE id = $2', [credits, familyId]);
+      await pool.query(
+        'INSERT INTO credit_purchases (family_id, credits, amount_cents, stripe_event_id) VALUES ($1, $2, $3, $4)',
+        [familyId, credits, session.amount_total || 0, event.id]
+      );
     }
   }
   res.json({ received: true });
@@ -127,6 +138,16 @@ async function initDB() {
     );
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS credit_purchases (
+      id SERIAL PRIMARY KEY,
+      family_id INTEGER REFERENCES families(id),
+      credits INTEGER NOT NULL,
+      amount_cents INTEGER NOT NULL,
+      stripe_event_id TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS app_state (
       key TEXT PRIMARY KEY,
       value JSONB NOT NULL,
@@ -136,6 +157,14 @@ async function initDB() {
   await pool.query('ALTER TABLE app_state ADD COLUMN IF NOT EXISTS family_id INTEGER REFERENCES families(id)');
   await backfillOwnerFamily();
   await swapAppStatePrimaryKey();
+  // Self-healing: families created before roles were assigned correctly get their
+  // earliest member promoted to household owner (no-op once every family has one).
+  await pool.query(`
+    UPDATE users u SET role = 'owner'
+    WHERE u.role <> 'owner'
+      AND NOT EXISTS (SELECT 1 FROM users o WHERE o.family_id = u.family_id AND o.role = 'owner')
+      AND u.id = (SELECT MIN(x.id) FROM users x WHERE x.family_id = u.family_id)
+  `);
 }
 
 function auth(req, res, next) {
@@ -167,8 +196,43 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.get('/api/me', auth, async (req, res) => {
-  const { rows } = await pool.query('SELECT email FROM users WHERE id = $1', [req.user.userId]);
-  res.json({ email: rows[0] ? rows[0].email : null, familyId: req.user.familyId, isOwnerFamily: !!req.user.isOwnerFamily });
+  const { rows } = await pool.query('SELECT email, role FROM users WHERE id = $1', [req.user.userId]);
+  res.json({
+    userId: req.user.userId,
+    email: rows[0] ? rows[0].email : null,
+    role: rows[0] ? rows[0].role : 'member',
+    familyId: req.user.familyId,
+    isOwnerFamily: !!req.user.isOwnerFamily,
+  });
+});
+
+app.post('/api/account/change-password', auth, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Current and new password are required' });
+  if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters' });
+  const { rows } = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.user.userId]);
+  if (!rows[0] || !(await bcrypt.compare(currentPassword, rows[0].password_hash))) {
+    return res.status(401).json({ error: 'Current password is incorrect' });
+  }
+  const hash = await bcrypt.hash(newPassword, 10);
+  await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, req.user.userId]);
+  res.json({ ok: true });
+});
+
+app.post('/api/account/change-email', auth, async (req, res) => {
+  const { password, newEmail } = req.body || {};
+  if (!password || !newEmail) return res.status(400).json({ error: 'Password and new email are required' });
+  const { rows } = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.user.userId]);
+  if (!rows[0] || !(await bcrypt.compare(password, rows[0].password_hash))) {
+    return res.status(401).json({ error: 'Password is incorrect' });
+  }
+  try {
+    await pool.query('UPDATE users SET email = $1 WHERE id = $2', [newEmail, req.user.userId]);
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'That email is already in use' });
+    throw e;
+  }
+  res.json({ ok: true });
 });
 
 app.post('/api/signup', async (req, res) => {
@@ -191,20 +255,22 @@ app.post('/api/signup', async (req, res) => {
     }
 
     let familyId = redeemed[0].family_id;
+    let role = 'member';
     if (!familyId) {
       const { rows: fam } = await client.query(
         'INSERT INTO families (name, is_owner_family, credits) VALUES ($1, false, 0) RETURNING id',
         [familyName || 'My Family']
       );
       familyId = fam[0].id;
+      role = 'owner'; // creator of a brand-new family manages that household
     }
 
     const hash = await bcrypt.hash(password, 10);
     let user;
     try {
       const { rows: userRows } = await client.query(
-        `INSERT INTO users (family_id, email, password_hash, role) VALUES ($1, $2, $3, 'member') RETURNING *`,
-        [familyId, email, hash]
+        `INSERT INTO users (family_id, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING *`,
+        [familyId, email, hash, role]
       );
       user = userRows[0];
     } catch (e) {
@@ -240,10 +306,31 @@ app.post('/api/invites', auth, async (req, res) => {
 
 app.get('/api/family/members', auth, async (req, res) => {
   const { rows } = await pool.query(
-    'SELECT email, role, created_at FROM users WHERE family_id = $1 ORDER BY created_at',
+    'SELECT id, email, role, created_at FROM users WHERE family_id = $1 ORDER BY created_at',
     [req.user.familyId]
   );
   res.json({ members: rows });
+});
+
+app.delete('/api/family/members/:id', auth, async (req, res) => {
+  const targetId = Number(req.params.id);
+  if (!targetId) return res.status(400).json({ error: 'Invalid member id' });
+  const { rows: target } = await pool.query('SELECT id FROM users WHERE id = $1 AND family_id = $2', [targetId, req.user.familyId]);
+  if (!target.length) return res.status(404).json({ error: 'Member not found in your household' });
+
+  if (targetId !== req.user.userId) {
+    // Removing someone else requires household-owner role
+    const { rows: caller } = await pool.query('SELECT role FROM users WHERE id = $1', [req.user.userId]);
+    if (!caller[0] || caller[0].role !== 'owner') {
+      return res.status(403).json({ error: 'Only the household owner can remove members' });
+    }
+  }
+
+  // Detach invite references so the FK constraints allow the delete
+  await pool.query('UPDATE invites SET created_by_user_id = NULL WHERE created_by_user_id = $1', [targetId]);
+  await pool.query('UPDATE invites SET redeemed_by_user_id = NULL WHERE redeemed_by_user_id = $1', [targetId]);
+  await pool.query('DELETE FROM users WHERE id = $1', [targetId]);
+  res.json({ ok: true, left: targetId === req.user.userId });
 });
 
 app.get('/api/admin/families', auth, async (req, res) => {
@@ -283,23 +370,32 @@ app.get('/api/credits', auth, async (req, res) => {
 
 app.post('/api/checkout', auth, async (req, res) => {
   if (!stripe) return res.status(500).json({ error: 'Stripe is not configured' });
+  const pack = CREDIT_PACKS[(req.body || {}).pack] || CREDIT_PACKS.small;
   const origin = `${req.protocol}://${req.get('host')}`;
   const session = await stripe.checkout.sessions.create({
     mode: 'payment',
     line_items: [{
       price_data: {
         currency: 'usd',
-        product_data: { name: `PantryPal Recipe Credits (${CREDIT_PACK.credits})` },
-        unit_amount: CREDIT_PACK.amountCents,
+        product_data: { name: `PantryPal Recipe Credits (${pack.credits})` },
+        unit_amount: pack.amountCents,
       },
       quantity: 1,
     }],
     client_reference_id: String(req.user.familyId),
-    metadata: { familyId: String(req.user.familyId) },
+    metadata: { familyId: String(req.user.familyId), credits: String(pack.credits) },
     success_url: `${origin}/?checkout=success`,
     cancel_url: `${origin}/?checkout=cancel`,
   });
   res.json({ url: session.url });
+});
+
+app.get('/api/billing/history', auth, async (req, res) => {
+  const { rows } = await pool.query(
+    'SELECT credits, amount_cents, created_at FROM credit_purchases WHERE family_id = $1 ORDER BY created_at DESC LIMIT 50',
+    [req.user.familyId]
+  );
+  res.json({ purchases: rows });
 });
 
 app.post('/api/generate-recipe', auth, async (req, res) => {

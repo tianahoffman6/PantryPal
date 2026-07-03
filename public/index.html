@@ -372,10 +372,13 @@ function signOut(){
   localStorage.removeItem('pp-token');
   authToken=null;
   ui.meLoaded=false;ui.isOwnerFamily=false;
+  ui.myUserId=null;ui.myRole='member';ui.myEmail='';
   ui.membersLoaded=false;ui.familyMembers=[];
   ui.creditsLoaded=false;ui.credits=null;
+  ui.billingLoaded=false;ui.billingHistory=[];
   ui.adminLoaded=false;ui.adminFamilies=[];
   ui.inviteCode='';ui.newInviteCode='';
+  ui.accountMsg='';ui.accountErr='';ui.emailMsg='';ui.emailErr='';
   renderLogin();
 }
 
@@ -463,7 +466,10 @@ let ui={
   inviteCode:'', inviteExpires:'', invitingLoading:false,
   credits:null, creditsLoaded:false, checkoutLoading:false, checkoutMessage:'',
   familyMembers:[], membersLoaded:false, isOwnerFamily:false, meLoaded:false,
-  adminFamilies:[], adminLoaded:false, newInviteCode:'', newInviteExpires:'', newInviteLoading:false
+  myUserId:null, myRole:'member', myEmail:'',
+  adminFamilies:[], adminLoaded:false, newInviteCode:'', newInviteExpires:'', newInviteLoading:false,
+  accountMsg:'', accountErr:'', emailMsg:'', emailErr:'',
+  billingHistory:[], billingLoaded:false
 };
 
 // ─── UTILS ────────────────────────────────────────────────────────────────
@@ -1117,11 +1123,14 @@ async function boot(){
   if(checkoutParam){
     history.replaceState(null,'',window.location.pathname);
     if(checkoutParam==='success'){
+      ui.tab='settings';
       ui.settingsSection='family';
       ui.checkoutMessage='Payment received — updating your balance…';
       ui.creditsLoaded=false;
+      ui.billingLoaded=false;
     }
   }
+  if(!ui.creditsLoaded) loadCredits(); // background — powers the low-credit warning chips
   render();
 }
 
@@ -1569,9 +1578,10 @@ function renderCook(){
       '<input type="checkbox" '+(f.preferHave?'checked':'')+' data-change="cook-prefer-have">'+
       'Prioritize using what I already have'+
     '</label>'+
-    '<div class="form-actions" style="margin-top:14px;">'+
+    '<div class="form-actions" style="margin-top:14px;align-items:center;">'+
       '<button class="btn btn-primary" data-action="find-recipes">✦ Find recipes</button>'+
       '<button class="btn btn-secondary" data-action="use-what-i-have">Use what I have, right now</button>'+
+      lowCreditChip()+
     '</div>'+
   '</div>';
 
@@ -1670,6 +1680,7 @@ function renderCookbook(){
     '<button class="btn btn-primary" data-action="generate-random-recipes" '+(ui.generatingRandom?'disabled':'')+' style="display:flex;align-items:center;gap:5px;">'+
       (ui.generatingRandom?'<span class="spinner" style="width:14px;height:14px;border-width:2px;margin:0;"></span> Generating…':'✦ Generate more')+
     '</button>'+
+    lowCreditChip()+
   '</div>'+
   statsLine+legend+
   '<div class="toolbar" style="margin-bottom:12px;">'+
@@ -2010,6 +2021,7 @@ async function generateRecipeForMeal(){
     if(!recipe.title) throw new Error('empty');
     ui.cookingModal.generatedRecipe={...recipe,id:uid(),dateAdded:new Date().toISOString(),usesLowStock:[]};
     ui.cookingModal.generating=false;
+    noteCreditSpent();
   }catch(e){
     console.error(e);
     ui.cookingModal.generating=false;
@@ -2048,6 +2060,7 @@ async function generateRandomRecipes(){
     });
     saveCookbook();
     ui.generatingRandom=false;
+    noteCreditSpent();
   }catch(err){
     console.error('generateRandomRecipes error:', err);
     ui.generatingRandom=false;
@@ -2185,7 +2198,8 @@ function renderSettings(){
     {id:'stores',label:'Stores'},
     {id:'cuisines',label:'Cuisines'},
     {id:'household',label:'Household'},
-    {id:'family',label:'Family & Billing'}
+    {id:'family',label:'Family & Billing'},
+    {id:'account',label:'Account'}
   ];
   if(ui.isOwnerFamily) sections.push({id:'admin',label:'Admin'});
   const nav=sections.map(s=>'<button class="pill-btn '+(ui.settingsSection===s.id?'active':'')+'" data-action="set-settings-section" data-val="'+s.id+'">'+s.label+'</button>').join('');
@@ -2196,6 +2210,7 @@ function renderSettings(){
   else if(ui.settingsSection==='cuisines') body=renderSettingsCuisines();
   else if(ui.settingsSection==='household') body=renderSettingsHousehold();
   else if(ui.settingsSection==='family') body=renderSettingsFamily();
+  else if(ui.settingsSection==='account') body=renderSettingsAccount();
   else if(ui.settingsSection==='admin') body=ui.isOwnerFamily?renderSettingsAdmin():renderSettingsCats();
 
   return '<div class="settings-nav">'+nav+'</div>'+body;
@@ -2288,11 +2303,26 @@ function renderSettingsHousehold(){
 function renderSettingsFamily(){
   if(!ui.creditsLoaded) loadCredits();
   if(!ui.membersLoaded) loadMembers();
+  if(!ui.billingLoaded) loadBillingHistory();
   const creditsRow = ui.credits===null ? 'Unlimited' : (ui.credits+' recipe generation'+(ui.credits===1?'':'s')+' remaining');
-  const membersList = ui.familyMembers.map(m=>
-    '<div class="settings-row"><span style="font-weight:700;">'+h(m.email)+'</span>'+
-      '<span style="color:var(--ink-soft);font-size:12px;">'+h(m.role)+' · joined '+h(new Date(m.created_at).toLocaleDateString())+'</span></div>'
-  ).join('');
+  const iAmOwner = ui.myRole==='owner';
+  const membersList = ui.familyMembers.map(m=>{
+    const isMe = m.id===ui.myUserId;
+    let action='';
+    if(isMe) action='<button class="btn-icon" data-action="leave-household" style="color:var(--orange);">Leave</button>';
+    else if(iAmOwner) action='<button class="btn-icon" data-action="remove-member" data-id="'+m.id+'" data-email="'+h(m.email)+'" style="color:var(--orange);">✕ Remove</button>';
+    return '<div class="settings-row"><span style="font-weight:700;">'+h(m.email)+(isMe?' <span style="color:var(--ink-soft);font-weight:600;">(you)</span>':'')+'</span>'+
+      '<span style="display:flex;align-items:center;gap:8px;"><span style="color:var(--ink-soft);font-size:12px;">'+h(m.role)+' · joined '+h(new Date(m.created_at).toLocaleDateString())+'</span>'+action+'</span></div>';
+  }).join('');
+  const packBtns = ui.credits!==null ? [
+    {key:'small',label:'50 — $5'},
+    {key:'medium',label:'150 — $12'},
+    {key:'large',label:'500 — $35'}
+  ].map(p=>'<button class="btn btn-secondary" data-action="buy-credits" data-pack="'+p.key+'" '+(ui.checkoutLoading?'disabled':'')+' style="margin-right:8px;margin-bottom:8px;">'+(ui.checkoutLoading?'Redirecting…':p.label)+'</button>').join('') : '';
+  const history = ui.billingHistory.length
+    ? ui.billingHistory.map(p=>'<div class="settings-row"><span style="font-weight:700;">+'+p.credits+' credits</span>'+
+        '<span style="color:var(--ink-soft);font-size:12px;">$'+(p.amount_cents/100).toFixed(2)+' · '+h(new Date(p.created_at).toLocaleDateString())+'</span></div>').join('')
+    : '';
   return '<div class="settings-section-title">Family & Billing</div>'+
     '<div class="form-card" style="margin-bottom:16px;">'+
       '<div class="field">'+
@@ -2312,9 +2342,36 @@ function renderSettingsFamily(){
       '<div class="field">'+
         '<label>AI recipe generation credits</label>'+
         '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">'+h(creditsRow)+'</p>'+
-        (ui.credits!==null?'<button class="btn btn-secondary" data-action="buy-credits" '+(ui.checkoutLoading?'disabled':'')+'>'+(ui.checkoutLoading?'Redirecting…':'Buy 50 credits — $5')+'</button>':'')+
+        (ui.credits!==null&&ui.credits<=5?'<p style="color:var(--orange);font-size:12.5px;font-weight:800;margin:-4px 0 10px;">⚡ Running low — top up so recipe generation keeps working.</p>':'')+
+        packBtns+
         (ui.checkoutMessage?'<p style="color:var(--green);font-size:13px;font-weight:700;margin-top:10px;">'+h(ui.checkoutMessage)+'</p>':'')+
+        (history?'<div style="margin-top:16px;"><label>Purchase history</label>'+history+'</div>':'')+
       '</div>'+
+    '</div>';
+}
+
+function renderSettingsAccount(){
+  return '<div class="settings-section-title">Account</div>'+
+    '<div class="form-card" style="margin-bottom:16px;">'+
+      '<form data-form="change-password">'+
+        '<div class="field" style="margin-bottom:12px;"><label>Change password</label>'+
+          '<input type="password" id="acct-pw-current" autocomplete="current-password" placeholder="Current password" required style="margin-bottom:8px;">'+
+          '<input type="password" id="acct-pw-new" autocomplete="new-password" placeholder="New password (8+ characters)" minlength="8" required></div>'+
+        (ui.accountErr?'<p style="color:var(--orange);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.accountErr)+'</p>':'')+
+        (ui.accountMsg?'<p style="color:var(--green);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.accountMsg)+'</p>':'')+
+        '<button type="submit" class="btn btn-primary">Update password</button>'+
+      '</form>'+
+    '</div>'+
+    '<div class="form-card">'+
+      '<form data-form="change-email">'+
+        '<div class="field" style="margin-bottom:12px;"><label>Change email</label>'+
+          '<p style="color:var(--ink-soft);font-size:12.5px;margin-bottom:8px;">Currently signed in as <strong>'+h(ui.myEmail||'…')+'</strong></p>'+
+          '<input type="email" id="acct-email-new" autocomplete="email" placeholder="New email" required style="margin-bottom:8px;">'+
+          '<input type="password" id="acct-email-pw" autocomplete="current-password" placeholder="Confirm with your password" required></div>'+
+        (ui.emailErr?'<p style="color:var(--orange);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.emailErr)+'</p>':'')+
+        (ui.emailMsg?'<p style="color:var(--green);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.emailMsg)+'</p>':'')+
+        '<button type="submit" class="btn btn-primary">Update email</button>'+
+      '</form>'+
     '</div>';
 }
 
@@ -2344,7 +2401,12 @@ function renderSettingsAdmin(){
 async function loadMe(){
   ui.meLoaded=true;
   const data=await api('GET','me');
-  if(data) ui.isOwnerFamily=!!data.isOwnerFamily;
+  if(data){
+    ui.isOwnerFamily=!!data.isOwnerFamily;
+    ui.myUserId=data.userId;
+    ui.myRole=data.role||'member';
+    ui.myEmail=data.email||'';
+  }
   render();
 }
 
@@ -2353,6 +2415,16 @@ async function loadCredits(){
   const data=await api('GET','credits');
   if(data){ ui.credits=data.credits; ui.checkoutMessage=''; }
   render();
+}
+
+function noteCreditSpent(){
+  if(typeof ui.credits==='number'&&ui.credits>0) ui.credits--;
+}
+
+function lowCreditChip(){
+  if(typeof ui.credits!=='number'||ui.credits>5) return '';
+  const txt=ui.credits+' credit'+(ui.credits===1?'':'s')+' left';
+  return '<button class="pill-btn" data-action="open-billing" style="border-color:var(--orange);color:var(--orange);">⚡ '+txt+' — top up</button>';
 }
 
 async function loadMembers(){
@@ -2385,11 +2457,52 @@ async function generateNewFamilyInvite(){
   render();
 }
 
-async function buyCredits(){
+async function buyCredits(pack){
   ui.checkoutLoading=true;render();
-  const data=await api('POST','checkout');
+  const data=await api('POST','checkout',{pack:pack||'small'});
   if(data && data.url){ window.location.href=data.url; return; }
   ui.checkoutLoading=false;render();
+}
+
+async function loadBillingHistory(){
+  ui.billingLoaded=true;
+  const data=await api('GET','billing/history');
+  if(data) ui.billingHistory=data.purchases;
+  render();
+}
+
+async function changePassword(){
+  const currentPassword=document.getElementById('acct-pw-current').value;
+  const newPassword=document.getElementById('acct-pw-new').value;
+  ui.accountErr='';ui.accountMsg='';
+  const data=await api('POST','account/change-password',{currentPassword,newPassword});
+  if(data&&data.ok){ ui.accountMsg='Password updated.'; }
+  else{ ui.accountErr=lastApiStatus===401?'Current password is incorrect.':'Couldn\'t update password — check the requirements and try again.'; }
+  render();
+}
+
+async function changeEmail(){
+  const newEmail=document.getElementById('acct-email-new').value;
+  const password=document.getElementById('acct-email-pw').value;
+  ui.emailErr='';ui.emailMsg='';
+  const data=await api('POST','account/change-email',{password,newEmail});
+  if(data&&data.ok){ ui.emailMsg='Email updated.'; ui.myEmail=newEmail; ui.membersLoaded=false; }
+  else{ ui.emailErr=lastApiStatus===401?'Password is incorrect.':(lastApiStatus===409?'That email is already in use.':'Couldn\'t update email — try again.'); }
+  render();
+}
+
+async function removeMember(id,email){
+  if(!confirm('Remove '+email+' from your household? They will no longer be able to sign in.')) return;
+  const data=await api('DELETE','family/members/'+id);
+  if(data&&data.ok){ ui.membersLoaded=false; }
+  render();
+}
+
+async function leaveHousehold(){
+  if(!confirm('Leave this household? You\'ll lose access to its data and will need a new invite to return.')) return;
+  const data=await api('DELETE','family/members/'+ui.myUserId);
+  if(data&&data.ok){ signOut(); return; }
+  render();
 }
 
 // ─── API: FIND RECIPES ────────────────────────────────────────────────────
@@ -2419,6 +2532,7 @@ async function findRecipes(){
     const recipes=JSON.parse(text);
     if(!Array.isArray(recipes)||!recipes.length) throw new Error('empty');
     ui.recipes=recipes;ui.recipeStatus='done';
+    noteCreditSpent();
   }catch(err){
     console.error(err);ui.recipeStatus='error';
     ui.recipeError=lastApiStatus===402?'You\'re out of AI credits. Buy more in Settings → Family & Billing.':'Could not fetch recipes. Check your filters and try again.';
@@ -2624,7 +2738,10 @@ document.addEventListener('click',e=>{
     case 'set-auth-mode': ui.authMode=a.val;ui.loginError='';ui.signupError='';renderLogin();break;
     case 'generate-invite': generateInvite();break;
     case 'generate-new-family-invite': generateNewFamilyInvite();break;
-    case 'buy-credits': buyCredits();break;
+    case 'buy-credits': buyCredits(a.pack);break;
+    case 'remove-member': removeMember(a.id,a.email);break;
+    case 'leave-household': leaveHousehold();break;
+    case 'open-billing': ui.tab='settings';ui.settingsSection='family';render();break;
   }
 });
 
@@ -2698,6 +2815,8 @@ document.addEventListener('submit',e=>{
   else if(form.dataset.form==='add-cookbook'){addManualRecipe(fd);ui.browserShowAddForm=false;}
   else if(form.dataset.form==='login'){submitLogin();}
   else if(form.dataset.form==='signup'){submitSignup();}
+  else if(form.dataset.form==='change-password'){changePassword();}
+  else if(form.dataset.form==='change-email'){changeEmail();}
 });
 
 // ─── INIT ─────────────────────────────────────────────────────────────────
