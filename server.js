@@ -88,13 +88,14 @@ app.post('/api/generate-recipe', auth, async (req, res) => {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-5',
         max_tokens: max_tokens || 1000,
         system,
         messages,
       }),
     });
     const data = await response.json();
+    if (!response.ok) console.error('Anthropic API error:', response.status, data);
     res.status(response.status).json(data);
   } catch (e) {
     res.status(502).json({ error: 'Failed to reach Anthropic API' });
