@@ -66,6 +66,11 @@ input::placeholder,textarea::placeholder{color:var(--ink-soft);}
 .btn-icon{background:none;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:var(--ink-soft);font-size:13px;padding:5px 10px;font-weight:700;}
 .btn-icon:hover{border-color:var(--ink-soft);color:var(--ink);}
 
+/* LOGIN / BOOT */
+.pp-login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+.pp-login-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);padding:28px;width:100%;max-width:360px;}
+.pp-boot{padding:70px 20px;text-align:center;color:var(--ink-soft);font-weight:700;}
+
 /* FORMS */
 .form-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:16px;animation:fadeUp .15s ease;}
 .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;}
@@ -338,9 +343,34 @@ const CAT_KEYWORDS = {
   'Frozen':['frozen','ice cream','popsicle','frost']
 };
 
-// ─── STORAGE ─────────────────────────────────────────────────────────────
-function lsGet(k,def){try{const v=localStorage.getItem('pp_'+k);return v===null?def:JSON.parse(v);}catch{return def;}}
-function lsSave(k,v){try{localStorage.setItem('pp_'+k,JSON.stringify(v));}catch(e){console.error('save failed',e);}}
+// ─── STORAGE / API ───────────────────────────────────────────────────────
+let authToken = localStorage.getItem('pp-token');
+
+async function api(method,path,body){
+  try{
+    const res = await fetch('/api/'+path,{
+      method,
+      headers:{'Content-Type':'application/json',...(authToken?{'Authorization':'Bearer '+authToken}:{})},
+      ...(body!==undefined?{body:JSON.stringify(body)}:{})
+    });
+    if(res.status===401){ signOut(); return null; }
+    return res.ok ? res.json() : null;
+  }catch(e){ console.error('API error:',path,e); return null; }
+}
+
+function signOut(){
+  localStorage.removeItem('pp-token');
+  authToken=null;
+  renderLogin();
+}
+
+function persistState(key,value){
+  api('PUT','state/'+key,value).then(res=>{
+    if(!authToken) return; // signOut() already handled a 401
+    ui.syncError = res===null ? "Couldn't save your changes. Check your connection." : '';
+    render();
+  });
+}
 
 function defaultSettings(){
   return {householdName:'Tiana & Baltej',members:['T','B'],categories:DEFAULT_CATEGORIES.map(c=>({...c})),stores:[],cuisines:['Italian','Mexican','Indian','Chinese','Japanese','Thai','Korean','Mediterranean','French','American','Greek','Other']};
@@ -350,12 +380,14 @@ let state={
   inventory:[],grocery:[],cookbook:[],planner:{},settings:{}
 };
 
-function loadState(){
-  state.inventory = lsGet('inventory',[]);
-  state.grocery   = lsGet('grocery',[]);
-  state.cookbook  = lsGet('cookbook',[]);
-  state.planner   = lsGet('planner',{});
-  state.settings  = lsGet('settings', defaultSettings());
+async function loadState(){
+  const data = await api('GET','state');
+  if(data===null) return false;
+  state.inventory = data.inventory || [];
+  state.grocery   = data.grocery || [];
+  state.cookbook  = data.cookbook || [];
+  state.planner   = data.planner || {};
+  state.settings  = data.settings || defaultSettings();
   // back-fill any missing settings keys
   if(!state.settings.categories) state.settings.categories = DEFAULT_CATEGORIES.map(c=>({...c}));
   if(!state.settings.stores)     state.settings.stores = [];
@@ -366,12 +398,13 @@ function loadState(){
     state.cookbook = SEED_RECIPES.map(r=>({...r}));
     saveCookbook();
   }
+  return true;
 }
-function saveInv(){lsSave('inventory',state.inventory);}
-function saveGrocery(){lsSave('grocery',state.grocery);}
-function saveCookbook(){lsSave('cookbook',state.cookbook);}
-function savePlanner(){lsSave('planner',state.planner);}
-function saveSettings(){lsSave('settings',state.settings);}
+function saveInv(){persistState('inventory',state.inventory);}
+function saveGrocery(){persistState('grocery',state.grocery);}
+function saveCookbook(){persistState('cookbook',state.cookbook);}
+function savePlanner(){persistState('planner',state.planner);}
+function saveSettings(){persistState('settings',state.settings);}
 
 // ─── UI STATE ─────────────────────────────────────────────────────────────
 let ui={
@@ -399,7 +432,9 @@ let ui={
   settingsSection:'categories', editCatId:null, showAddCat:false,
   newCatName:'', newCatEmoji:'🍽', newCatColor:'#4F7042',
   editCatName:'', editCatEmoji:'', editCatColor:'',
-  newStore:'', newCuisine:'', householdEdit:''
+  newStore:'', newCuisine:'', householdEdit:'',
+  // auth
+  loginError:'', syncError:''
 };
 
 // ─── UTILS ────────────────────────────────────────────────────────────────
@@ -621,10 +656,62 @@ function addCookbookMissingToGrocery(id){
 // ─── RENDER: MAIN ─────────────────────────────────────────────────────────
 function render(){
   document.getElementById('app').innerHTML=
-    renderHeader()+renderTabs()+renderAlertStrip()+
+    renderHeader()+renderTabs()+renderSyncBanner()+renderAlertStrip()+
     '<div class="pp-content">'+renderTab()+'</div>';
   renderModal();
   renderCookingModal();
+}
+
+function renderSyncBanner(){
+  if(!ui.syncError) return '';
+  return '<div class="alert-strip" style="background:#FDECEA;border-bottom:1px solid #F0B4AC;">'+
+    '<span class="alert-text" style="color:#A83C30;">⚠ '+h(ui.syncError)+'</span>'+
+  '</div>';
+}
+
+function renderLogin(){
+  document.getElementById('app').innerHTML=
+    '<div class="pp-login-wrap">'+
+      '<div class="pp-login-card">'+
+        '<div class="pp-logo" style="margin-bottom:4px;">pantry<span>pal</span></div>'+
+        '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:18px;">Household access — sign in to continue</p>'+
+        '<form data-form="login">'+
+          '<div class="field" style="margin-bottom:12px;"><label>Email</label><input type="email" id="login-email" autocomplete="email" required></div>'+
+          '<div class="field" style="margin-bottom:12px;"><label>Password</label><input type="password" id="login-password" autocomplete="current-password" required></div>'+
+          (ui.loginError?'<p style="color:var(--orange);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.loginError)+'</p>':'')+
+          '<button type="submit" class="btn btn-primary" style="width:100%;">Sign in</button>'+
+        '</form>'+
+      '</div>'+
+    '</div>';
+}
+
+async function submitLogin(){
+  const email=document.getElementById('login-email').value;
+  const password=document.getElementById('login-password').value;
+  ui.loginError='';
+  try{
+    const res=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
+    if(!res.ok){ ui.loginError='Invalid email or password.'; renderLogin(); return; }
+    const data=await res.json();
+    authToken=data.token;
+    localStorage.setItem('pp-token',authToken);
+    boot();
+  }catch(e){
+    ui.loginError='Could not connect — try again.';
+    renderLogin();
+  }
+}
+
+async function boot(){
+  if(!authToken){ renderLogin(); return; }
+  document.getElementById('app').innerHTML='<div class="pp-boot">Loading PantryPal…</div>';
+  const ok=await loadState();
+  if(!authToken) return; // signOut() already rendered the login screen
+  if(!ok){
+    document.getElementById('app').innerHTML='<div class="pp-boot">Couldn\'t load your data. <button class="btn btn-primary" data-action="retry-boot" style="margin-top:12px;">Retry</button></div>';
+    return;
+  }
+  render();
 }
 
 function renderPlannerModalBody(){
@@ -763,6 +850,7 @@ function renderHeader(){
     '<div class="pp-household">'+
       '<span class="pp-household-name">'+h(settings.householdName)+'</span>'+
       '<div class="pp-avatars">'+avatars+'</div>'+
+      '<button class="btn-icon" data-action="sign-out" title="Sign out" style="margin-left:8px;">⎋</button>'+
     '</div>'+
   '</header>';
 }
@@ -1459,8 +1547,8 @@ async function generateRecipeForMeal(){
   const inventory=state.inventory.map(i=>i.name+(i.quantity?' ('+i.quantity+(i.unit?' '+h(i.unit):'')+')':'')).join(', ');
   const system='You are a recipe generator. Given a meal name and the user\'s kitchen inventory, generate a practical recipe using as many of their available ingredients as possible. Respond ONLY with a raw JSON object (no markdown, no code fences): {"title":string,"cuisine":string,"mealType":string,"totalTimeMinutes":number,"servings":number,"description":string,"spiceLevel":string,"ingredients":[{"name":string,"quantity":string,"have":boolean}],"steps":[string],"missingIngredients":[string],"tags":[string]}. Mark have:true if the ingredient fuzzy-matches the inventory. Assume salt, pepper, oil, and water are always available. Keep steps to 4-6 clear imperative sentences.';
   try{
-    const res=await fetch('/api/generate-recipe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({max_tokens:1000,system,messages:[{role:'user',content:'Generate a recipe for: "'+meal+'"\n\nKitchen inventory: '+inventory}]})});
-    const data=await res.json();
+    const data=await api('POST','generate-recipe',{max_tokens:1000,system,messages:[{role:'user',content:'Generate a recipe for: "'+meal+'"\n\nKitchen inventory: '+inventory}]});
+    if(!data) throw new Error('request failed');
     let text=(data.content||[]).find(b=>b.type==='text')?.text||'';
     text=text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
     const recipe=JSON.parse(text);
@@ -1488,14 +1576,9 @@ async function generateRandomRecipes(){
   const existing=state.cookbook.slice(0,40).map(r=>r.title).join(', ');
   const system='You are a creative recipe generator for a home kitchen app. Generate exactly 6 diverse and practical recipes. Mix different cuisines, meal types, and difficulty levels. Avoid duplicating any of these existing recipes: '+existing+'. Respond ONLY with a raw JSON array of 6 recipe objects (no markdown, no fences): [{"title":string,"cuisine":string,"mealType":string,"totalTimeMinutes":number,"servings":number,"description":string,"spiceLevel":string,"ingredients":[{"name":string,"quantity":string,"have":false}],"steps":[string],"missingIngredients":[],"tags":[string]}]. Keep descriptions under 15 words. Keep steps to 4-6 imperative sentences each under 15 words. Include at least one Breakfast, one Lunch, and one Dinner recipe.';
   try{
-    const res=await fetch('/api/generate-recipe',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({max_tokens:1000,system,
-        messages:[{role:'user',content:'Generate 6 diverse home recipes I haven\'t tried yet.'}]})
-    });
-    if(!res.ok) throw new Error('API error '+res.status);
-    const data=await res.json();
+    const data=await api('POST','generate-recipe',{max_tokens:1000,system,
+      messages:[{role:'user',content:'Generate 6 diverse home recipes I haven\'t tried yet.'}]});
+    if(!data) throw new Error('request failed');
     let text=(data.content||[]).find(b=>b.type==='text')?.text||'';
     text=text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
     const s=text.indexOf('['),e=text.lastIndexOf(']');
@@ -1760,8 +1843,8 @@ async function findRecipes(){
   };
   const system='You are the recipe engine inside a home kitchen app called PantryPal. Respond ONLY with a raw JSON array — no markdown fences, no commentary — of exactly 3 recipe objects: [{"title":string,"cuisine":string,"mealType":string,"prepTimeMinutes":number,"cookTimeMinutes":number,"totalTimeMinutes":number,"servings":number,"ingredients":[{"name":string,"quantity":string,"have":boolean}],"missingIngredients":[string],"steps":[string],"usesLowStock":[string],"tags":[string]}]. Mark ingredient have:true if it loosely matches the inventory (plurals, synonyms OK). Assume salt, pepper, oil, water always available. Honor mealType/cuisine/maxTotalTimeMinutes as hard filters when not Any/null. If preferUseWhatIHave, strongly favor recipes with few missing ingredients, especially using low-stock items. Keep steps to 4-6 imperative sentences each under 15 words. Respond with strict JSON only.';
   try{
-    const res=await fetch('/api/generate-recipe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({max_tokens:1000,system,messages:[{role:'user',content:JSON.stringify(payload)}]})});
-    const data=await res.json();
+    const data=await api('POST','generate-recipe',{max_tokens:1000,system,messages:[{role:'user',content:JSON.stringify(payload)}]});
+    if(!data) throw new Error('request failed');
     let text=(data.content||[]).find(b=>b.type==='text')?.text||'';
     text=text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
     const s=text.indexOf('[');const e=text.lastIndexOf(']');
@@ -1966,6 +2049,9 @@ document.addEventListener('click',e=>{
     case 'add-cuisine': addCuisine();break;
     case 'remove-cuisine': removeCuisine(a.val);break;
     case 'save-household':{const inp=document.getElementById('household-name-input');if(inp)ui.householdEdit=inp.value;saveHousehold();}break;
+    // auth
+    case 'sign-out': signOut();break;
+    case 'retry-boot': boot();break;
   }
 });
 
@@ -2037,11 +2123,11 @@ document.addEventListener('submit',e=>{
     ui.showAddGrocery=false;saveGrocery();render();
   }
   else if(form.dataset.form==='add-cookbook'){addManualRecipe(fd);ui.browserShowAddForm=false;}
+  else if(form.dataset.form==='login'){submitLogin();}
 });
 
 // ─── INIT ─────────────────────────────────────────────────────────────────
-loadState();
-render();
+boot();
 </script>
 </body>
 </html>
