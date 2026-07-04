@@ -197,21 +197,16 @@ input::placeholder,textarea::placeholder{color:var(--ink-soft);}
 .recipe-browser-header h3{font-family:'Bitter',Georgia,serif;font-size:20px;font-weight:700;flex:1;margin:0;}
 .browser-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
 .browser-card-wrap{display:flex;flex-direction:column;}
-.browser-card{background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:11px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:border-color .1s,background .1s;}
-.browser-card:hover,.browser-card.active{border-color:var(--green);}
-.browser-card.active{border-radius:12px 12px 0 0;background:#FDFAF5;}
+.browser-card{background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:11px 14px;display:flex;align-items:center;gap:10px;transition:border-color .1s,background .1s;}
+.browser-card:hover{border-color:var(--green);}
 .browser-card-name{font-weight:800;font-size:13.5px;line-height:1.3;flex:1;}
 .browser-card-meta{font-size:11.5px;color:var(--ink-soft);font-weight:700;margin-top:2px;}
 .browser-plan-btn{font-size:11px;font-weight:900;padding:5px 12px;border-radius:8px;border:1.5px solid var(--green);color:var(--green);background:transparent;cursor:pointer;white-space:nowrap;flex-shrink:0;}
-.browser-plan-btn.active{background:var(--green);color:#fff;}
-.slot-picker{padding:10px 14px;background:var(--green-soft);border:1.5px solid var(--green);border-top:none;border-radius:0 0 12px 12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
-.slot-pick-btn{font-size:10px;font-weight:900;padding:5px 10px;border-radius:6px;border:1px solid var(--green);background:#fff;color:#2C6E2E;cursor:pointer;white-space:nowrap;transition:background .1s;}
-.slot-pick-btn:hover{background:var(--green);color:#fff;}
-.slot-pick-btn.taken{opacity:.55;border-style:dashed;}
 
 /* PLANNER MODAL */
 .modal-overlay{position:fixed;inset:0;background:rgba(17,24,16,.6);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px;}
-.modal-sheet{background:var(--card);border-radius:var(--r);width:100%;max-width:540px;max-height:88vh;overflow-y:auto;padding:22px;box-shadow:0 12px 40px rgba(17,24,16,.3);}
+.modal-sheet{background:var(--card);border-radius:var(--r);width:100%;max-width:540px;max-height:88vh;overflow-y:auto;padding:22px;box-shadow:0 12px 40px rgba(17,24,16,.3);transition:max-width .15s;}
+.modal-sheet-large{max-width:880px;}
 .modal-title{font-family:'Bitter',Georgia,serif;font-size:20px;font-weight:700;margin-bottom:18px;}
 .modal-close{float:right;font-size:24px;background:none;border:none;cursor:pointer;color:var(--ink-soft);margin-top:-4px;line-height:1;}
 
@@ -452,12 +447,12 @@ let ui={
   cookFilters:{mealType:'Any',cuisine:'Any',customCuisine:'',maxTime:'any',preferHave:false,notes:''},
   recipeStatus:'idle', recipes:[], recipeError:'',
   // cookbook
-  cbSearch:'', cbMealFilter:'All', cbCanMake:false, cbFav:false, showAddCookbook:false, expandedCbId:null,
+  cbSearch:'', cbMealFilter:'All', cbCanMake:false, cbFav:false, showAddCookbook:false,
   // planner
   plannerWeekOffset:0, plannerModal:null, // {date,slot}
   plannerSearch:'', plannerShowCreate:false, plannerMealFilter:'All',
   // recipe browser (within planner tab)
-  browserSearch:'', browserMealFilter:'All', browserPlanTitle:null,
+  browserSearch:'', browserMealFilter:'All',
   browserShowAddForm:false, generatingRandom:false, generateError:'',
   // settings
   settingsSection:'categories', editCatId:null, showAddCat:false,
@@ -473,7 +468,9 @@ let ui={
   adminFamilies:[], adminLoaded:false, newInviteCode:'', newInviteExpires:'', newInviteLoading:false,
   accountMsg:'', accountErr:'', emailMsg:'', emailErr:'',
   billingHistory:[], billingLoaded:false,
-  collapsedGroups:new Set()
+  collapsedGroups:new Set(),
+  recipeViewModal:null, // {recipe, large}
+  assignModal:null // {title, weekOffset}
 };
 
 // ─── UTILS ────────────────────────────────────────────────────────────────
@@ -1244,12 +1241,18 @@ function renderPlannerModalBody(){
 
 function renderModal(){
   const root=document.getElementById('modal-root');
-  if(!ui.plannerModal){root.innerHTML='';return;}
+  if(ui.plannerModal){ root.innerHTML=renderChooseRecipeModal(); }
+  else if(ui.recipeViewModal){ root.innerHTML=renderRecipeViewModal(); }
+  else if(ui.assignModal){ root.innerHTML=renderAssignModal(); }
+  else { root.innerHTML=''; return; }
+  setTimeout(()=>{const el=document.getElementById('planner-search-input');if(el)el.focus();},0);
+}
+
+function renderChooseRecipeModal(){
   const{date,slot}=ui.plannerModal;
   const dObj=new Date(date+'T00:00:00');
-  const dateLabel=dObj.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});
   const dayAbbr=dObj.toLocaleDateString(undefined,{weekday:'short'});
-  root.innerHTML=
+  return (
     '<div class="modal-overlay" id="pp-modal-overlay">'+
       '<div class="modal-sheet" style="padding:0;display:flex;flex-direction:column;overflow:hidden;">'+
         // Header (never re-renders while typing)
@@ -1274,8 +1277,129 @@ function renderModal(){
           '<button class="btn btn-secondary" data-action="close-modal" style="width:100%;">Cancel</button>'+
         '</div>'+
       '</div>'+
+    '</div>'
+  );
+}
+
+function renderRecipeViewModal(){
+  const {recipe:r,large}=ui.recipeViewModal;
+  const avail=recipeAvailability(r);
+
+  let availBar='';
+  if(avail){
+    const pct=Math.round((avail.have/avail.total)*100);
+    const barColor=avail.missing===0?'var(--green)':avail.have>=avail.total/2?'var(--gold)':'var(--orange)';
+    const label=avail.missing===0
+      ?'<span style="color:var(--green);font-weight:800;">✅ All '+avail.total+' ingredients in kitchen</span>'
+      :'<span><strong style="color:'+barColor+';">'+avail.have+'/'+avail.total+'</strong> <span style="color:var(--ink-soft);font-weight:700;">in kitchen</span></span>';
+    availBar='<div style="margin:10px 0 6px;">'+label+
+      '<div style="height:4px;background:var(--border);border-radius:3px;margin-top:5px;overflow:hidden;">'+
+        '<div style="height:100%;width:'+pct+'%;background:'+barColor+';border-radius:3px;"></div>'+
+      '</div></div>';
+  }
+
+  const spiceColor={'Mild':'#4F7042','Medium':'#C2941F','Hot':'#A23E1C','Very Hot':'#7A0000'}[r.spiceLevel]||'var(--ink-soft)';
+  const spiceBadge=r.spiceLevel?'<span style="font-size:10px;font-weight:800;color:'+spiceColor+';border:1px solid '+spiceColor+'22;background:'+spiceColor+'11;padding:2px 8px;border-radius:8px;">🌶 '+h(r.spiceLevel)+'</span>':'';
+
+  let ingSection='';
+  if(avail&&avail.items.length){
+    ingSection='<div style="margin:14px 0 6px;"><div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);margin-bottom:6px;">Ingredients</div>'+
+      '<ul class="ing-list">'+avail.items.map(i=>
+        '<li><span class="'+(i.have?'ing-have':'ing-miss')+'">'+(i.have?'✓':'·')+'</span> '+
+        h(i.name)+(i.quantity?' <span style="color:var(--ink-soft);font-size:11px;">'+h(i.quantity)+'</span>':'')+
+        '</li>').join('')+'</ul></div>';
+  } else if(r.ingredients&&r.ingredients.length){
+    ingSection='<div style="margin:14px 0 6px;"><ul class="ing-list">'+r.ingredients.map(i=>'<li>'+h(i.name||i)+(i.quantity?' <span style="color:var(--ink-soft);font-size:11px;">'+h(i.quantity)+'</span>':'')+'</li>').join('')+'</ul></div>';
+  }
+  const stepsSection=r.steps&&r.steps.length
+    ?'<div style="margin:10px 0;"><div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);margin-bottom:6px;">Steps</div>'+
+      '<ol class="recipe-steps">'+r.steps.map(s=>'<li>'+h(s)+'</li>').join('')+'</ol></div>'
+    :'';
+
+  const addMissingBtn=avail&&avail.missing>0
+    ?'<button class="btn-icon" data-action="add-cookbook-missing" data-id="'+r.id+'" style="color:var(--green);border-color:var(--green);">🛒 Add '+avail.missing+' missing</button>'
+    :'';
+
+  return (
+    '<div class="modal-overlay" id="pp-modal-overlay">'+
+      '<div class="modal-sheet'+(large?' modal-sheet-large':'')+'">'+
+        '<button class="modal-close" data-action="close-recipe-view">×</button>'+
+        '<h2 class="modal-title" style="margin-bottom:4px;padding-right:28px;">'+h(r.title)+'</h2>'+
+        '<div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-bottom:10px;">'+
+          [r.cuisine,r.mealType].filter(Boolean).map(h).join(' · ')+
+        '</div>'+
+        (r.description?'<div style="font-size:13.5px;color:var(--ink-soft);margin-bottom:8px;line-height:1.4;">'+h(r.description)+'</div>':'')+
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'+
+          (r.totalTimeMinutes?'<span style="font-size:12px;color:var(--ink-soft);font-weight:700;">⏱ '+r.totalTimeMinutes+' min</span>':'')+
+          (r.servings?'<span style="font-size:12px;color:var(--ink-soft);font-weight:700;">👤 '+r.servings+'</span>':'')+
+          spiceBadge+
+        '</div>'+
+        availBar+ingSection+stepsSection+
+        '<div class="cb-actions" style="flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">'+
+          '<button class="btn-icon" data-action="toggle-cb-fav-item" data-id="'+r.id+'" title="'+(r.favorite?'Remove from favorites':'Add to favorites')+'" style="'+(r.favorite?'color:var(--gold);border-color:var(--gold);':'color:var(--ink-soft);')+'">'+(r.favorite?'⭐':'☆')+'</button>'+
+          addMissingBtn+
+          '<button class="btn-icon" data-action="open-assign-modal" data-title="'+h(r.title)+'" style="color:var(--ink-soft);">📅 Plan</button>'+
+          '<button class="btn-icon" data-action="toggle-recipe-view-size" style="margin-left:auto;">'+(large?'⤡ Smaller':'⤢ Make bigger')+'</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>'
+  );
+}
+
+function renderAssignModal(){
+  const{title,weekOffset}=ui.assignModal;
+  const ws=getWeekStart(weekOffset||0);
+  const we=new Date(ws);we.setDate(we.getDate()+6);
+  const label=ws.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' – '+we.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+  const today=new Date();today.setHours(0,0,0,0);
+
+  const days=Array.from({length:7},(_,i)=>{
+    const d=new Date(ws);d.setDate(d.getDate()+i);
+    const key=dateKey(d);
+    const isToday=d.getTime()===today.getTime();
+    const dayData=state.planner[key]||{};
+    const dayLabel=d.toLocaleDateString(undefined,{weekday:'long'});
+    const dateStr=d.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+    const slots=MEAL_SLOTS.map(slot=>{
+      const meal=dayData[slot.toLowerCase()]||'';
+      const emoji=SLOT_EMOJI[slot]||'';
+      return '<button type="button" class="planner-slot" data-action="assign-modal-pick-slot" data-date="'+key+'" data-slot="'+h(slot)+'" '+
+        'title="'+(meal?'Replace '+h(meal):'Add here')+'">'+
+        '<div class="slot-label">'+emoji+' '+slot+'</div>'+
+        (meal
+          ?'<div class="slot-meal" style="color:var(--ink-soft);">'+h(meal)+'</div>'
+          :'<div class="slot-add-btn">＋ Add</div>')+
+      '</button>';
+    }).join('');
+    return '<div class="planner-day">'+
+      '<div class="planner-day-header">'+
+        '<span class="day-label">'+dayLabel+'</span>'+
+        '<span class="day-date">'+dateStr+'</span>'+
+        (isToday?'<span class="today-chip">TODAY</span>':'')+
+      '</div>'+
+      '<div class="planner-slots">'+slots+'</div>'+
     '</div>';
-  setTimeout(()=>{const el=document.getElementById('planner-search-input');if(el)el.focus();},0);
+  }).join('');
+
+  return (
+    '<div class="modal-overlay" id="pp-modal-overlay">'+
+      '<div class="modal-sheet" style="padding:0;display:flex;flex-direction:column;overflow:hidden;">'+
+        '<div style="padding:20px 22px 0;flex-shrink:0;">'+
+          '<button class="modal-close" data-action="close-assign-modal">×</button>'+
+          '<div class="modal-title" style="margin-bottom:2px;">Add to planner</div>'+
+          '<div style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:14px;">'+h(title)+'</div>'+
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">'+
+            '<button type="button" class="planner-nav" data-action="assign-modal-prev-week">‹</button>'+
+            '<div style="font-size:13px;font-weight:800;color:var(--ink-soft);">'+label+'</div>'+
+            '<button type="button" class="planner-nav" data-action="assign-modal-next-week">›</button>'+
+          '</div>'+
+        '</div>'+
+        '<div style="flex:1;overflow-y:auto;padding:0 22px 18px;">'+
+          '<div class="planner-grid">'+days+'</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>'
+  );
 }
 
 function renderHeader(){
@@ -1752,7 +1876,6 @@ function renderCookbook(){
 }
 
 function renderCbCard(r){
-  const expanded=ui.expandedCbId===r.id;
   const avail=recipeAvailability(r);
 
   // Availability dot color
@@ -1783,22 +1906,6 @@ function renderCbCard(r){
   const spiceColor={'Mild':'#4F7042','Medium':'#C2941F','Hot':'#A23E1C','Very Hot':'#7A0000'}[r.spiceLevel]||'var(--ink-soft)';
   const spiceBadge=r.spiceLevel?'<span style="font-size:10px;font-weight:800;color:'+spiceColor+';border:1px solid '+spiceColor+'22;background:'+spiceColor+'11;padding:2px 8px;border-radius:8px;">🌶 '+h(r.spiceLevel)+'</span>':'';
 
-  // Expanded ingredients
-  let ingSection='';
-  if(expanded&&avail&&avail.items.length){
-    ingSection='<div style="margin:10px 0 6px;"><div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);margin-bottom:6px;">Ingredients</div>'+
-      '<ul class="ing-list">'+avail.items.map(i=>
-        '<li><span class="'+(i.have?'ing-have':'ing-miss')+'">'+(i.have?'✓':'·')+'</span> '+
-        h(i.name)+(i.quantity?' <span style="color:var(--ink-soft);font-size:11px;">'+h(i.quantity)+'</span>':'')+
-        '</li>').join('')+'</ul></div>';
-  } else if(expanded&&r.ingredients&&r.ingredients.length&&!avail){
-    ingSection='<div style="margin:10px 0 6px;"><ul class="ing-list">'+r.ingredients.map(i=>'<li>'+h(i.name||i)+(i.quantity?' <span style="color:var(--ink-soft);font-size:11px;">'+h(i.quantity)+'</span>':'')+'</li>').join('')+'</ul></div>';
-  }
-  const stepsSection=expanded&&r.steps&&r.steps.length
-    ?'<div style="margin:6px 0;"><div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);margin-bottom:6px;">Steps</div>'+
-      '<ol class="recipe-steps">'+r.steps.map(s=>'<li>'+h(s)+'</li>').join('')+'</ol></div>'
-    :'';
-
   const addMissingBtn=avail&&avail.missing>0
     ?'<button class="btn-icon" data-action="add-cookbook-missing" data-id="'+r.id+'" style="color:var(--green);border-color:var(--green);">🛒 Add '+avail.missing+' missing</button>'
     :'';
@@ -1819,12 +1926,11 @@ function renderCbCard(r){
         availBar+
       '</div>'+
     '</div>'+
-    ingSection+stepsSection+
     '<div class="cb-actions" style="flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">'+
       '<button class="btn-icon" data-action="toggle-cb-fav-item" data-id="'+r.id+'" title="'+(r.favorite?'Remove from favorites':'Add to favorites')+'" style="'+(r.favorite?'color:var(--gold);border-color:var(--gold);':'color:var(--ink-soft);')+'">'+(r.favorite?'⭐':'☆')+'</button>'+
-      '<button class="btn-icon" data-action="toggle-cb-expand" data-id="'+r.id+'">'+(expanded?'▲ Less':'▼ View')+'</button>'+
+      '<button class="btn-icon" data-action="open-recipe-view" data-id="'+r.id+'">👁 View</button>'+
       addMissingBtn+
-      '<button class="btn-icon" data-action="plan-from-cookbook" data-title="'+h(r.title)+'" style="color:var(--ink-soft);">📅 Plan</button>'+
+      '<button class="btn-icon" data-action="open-assign-modal" data-title="'+h(r.title)+'" style="color:var(--ink-soft);">📅 Plan</button>'+
       '<button class="btn-icon" data-action="delete-cookbook" data-id="'+r.id+'" style="color:var(--orange);margin-left:auto;">✕</button>'+
     '</div>'+
   '</div>';
@@ -2174,39 +2280,16 @@ function renderRecipeBrowserListInner(){
   if(ui.browserMealFilter!=='All') recipes=recipes.filter(r=>r.mealType===ui.browserMealFilter);
   if(!recipes.length) return '<div class="status-card" style="padding:24px;">No recipes found.</div>';
   return '<div class="browser-grid">'+recipes.map(r=>{
-    const active=ui.browserPlanTitle===r.title;
     const meta=[r.mealType,r.totalTimeMinutes?r.totalTimeMinutes+'min':null].filter(Boolean).join(' · ');
-    // Build slot picker (shown inline when active)
-    let picker='';
-    if(active){
-      const ws=getWeekStart(ui.plannerWeekOffset);
-      const today=new Date();today.setHours(0,0,0,0);
-      const chips=Array.from({length:7},(_,i)=>{
-        const d=new Date(ws);d.setDate(d.getDate()+i);
-        const key=dateKey(d);
-        const abbr=d.toLocaleDateString(undefined,{weekday:'short'});
-        const isToday=d.getTime()===today.getTime();
-        return MEAL_SLOTS.map(slot=>{
-          const taken=(state.planner[key]||{})[slot.toLowerCase()];
-          return '<button class="slot-pick-btn '+(taken?'taken':'')+'" '+
-            'data-action="browser-assign-slot" data-date="'+key+'" data-slot="'+slot+'" data-title="'+h(r.title)+'" '+
-            (taken?'title="Replace: '+h(taken)+'"':'')+'>'+
-            (isToday?'Today':abbr)+' '+SLOT_EMOJI[slot]+
-          '</button>';
-        }).join('');
-      }).join('');
-      picker='<div class="slot-picker"><span style="font-size:11px;font-weight:900;color:var(--green);margin-right:4px;">Add to:</span>'+chips+'</div>';
-    }
     return '<div class="browser-card-wrap">'+
-      '<div class="browser-card '+(active?'active':'')+'" data-action="browser-plan-recipe" data-title="'+h(r.title)+'">'+
+      '<div class="browser-card">'+
         '<div style="flex:1;min-width:0;">'+
           '<div class="browser-card-name">'+h(r.title)+'</div>'+
           (meta?'<div class="browser-card-meta">'+h(meta)+'</div>':'')+
         '</div>'+
-        '<button class="browser-plan-btn '+(active?'active':'')+'" data-action="browser-plan-recipe" data-title="'+h(r.title)+'">'+
-          (active?'✕ Cancel':'+ Plan')+
-        '</button>'+
-      '</div>'+picker+
+        '<button type="button" class="btn-icon" data-action="open-recipe-view" data-id="'+r.id+'">👁 View</button>'+
+        '<button type="button" class="browser-plan-btn" data-action="open-assign-modal" data-title="'+h(r.title)+'">+ Plan</button>'+
+      '</div>'+
     '</div>';
   }).join('')+'</div>';
 }
@@ -2638,7 +2721,9 @@ function partialUpdate(id,html){const el=document.getElementById(id);if(el)el.in
 document.addEventListener('click',e=>{
   // Close modals when clicking the overlay backgrounds
   if(e.target.id==='pp-modal-overlay'){
-    ui.plannerModal=null;ui.plannerSearch='';ui.plannerShowCreate=false;renderModal();return;
+    ui.plannerModal=null;ui.plannerSearch='';ui.plannerShowCreate=false;
+    ui.recipeViewModal=null;ui.assignModal=null;
+    renderModal();return;
   }
   if(e.target.id==='pp-cooking-overlay'){
     ui.cookingModal=null;renderCookingModal();return;
@@ -2694,18 +2779,28 @@ document.addEventListener('click',e=>{
     // cookbook
     case 'open-add-cookbook': ui.showAddCookbook=true;render();break;
     case 'close-add-cookbook': ui.showAddCookbook=false;render();break;
-    case 'toggle-cb-expand': ui.expandedCbId=(ui.expandedCbId===a.id?null:a.id);render();break;
     case 'delete-cookbook': if(confirm('Remove this recipe?')){deleteCookbookItem(a.id);}break;
     case 'set-cb-meal': ui.cbMealFilter=a.val;render();break;
     case 'toggle-cb-can-make': ui.cbCanMake=!ui.cbCanMake;render();break;
     case 'toggle-cb-fav': ui.cbFav=!ui.cbFav;render();break;
     case 'toggle-cb-fav-item':{const r=state.cookbook.find(x=>x.id===a.id);if(r){r.favorite=!r.favorite;saveCookbook();render();}}break;
     case 'add-cookbook-missing': addCookbookMissingToGrocery(a.id);break;
-    case 'plan-from-cookbook':
-      ui.tab='planner';
-      // Pre-seed planner search so user can drop it into a slot immediately
-      ui.plannerSearch=a.title||'';
-      render();
+    // recipe view modal (used from the cookbook and the planner's recipe browser)
+    case 'open-recipe-view':{
+      const r=state.cookbook.find(x=>x.id===a.id);
+      if(r){ ui.assignModal=null; ui.recipeViewModal={recipe:r,large:false}; renderModal(); }
+    }break;
+    case 'close-recipe-view': ui.recipeViewModal=null; renderModal(); break;
+    case 'toggle-recipe-view-size': if(ui.recipeViewModal){ ui.recipeViewModal.large=!ui.recipeViewModal.large; renderModal(); } break;
+    // assign-to-planner modal (used from the cookbook and the planner's recipe browser)
+    case 'open-assign-modal': ui.recipeViewModal=null; ui.assignModal={title:a.title,weekOffset:0}; renderModal(); break;
+    case 'close-assign-modal': ui.assignModal=null; renderModal(); break;
+    case 'assign-modal-prev-week': ui.assignModal.weekOffset=(ui.assignModal.weekOffset||0)-1; renderModal(); break;
+    case 'assign-modal-next-week': ui.assignModal.weekOffset=(ui.assignModal.weekOffset||0)+1; renderModal(); break;
+    case 'assign-modal-pick-slot':
+      setPlannerMeal(a.date,a.slot,ui.assignModal.title);
+      ui.assignModal=null;
+      renderModal();
       break;
     // planner
     case 'open-planner-modal':
@@ -2788,14 +2883,6 @@ document.addEventListener('click',e=>{
       ui.plannerMealFilter=a.slot==='Breakfast'?'Breakfast':a.slot==='Lunch'?'Lunch':a.slot==='Dinner'?'Dinner':'All';
       renderModal();break;
     // recipe browser (within planner tab)
-    case 'browser-plan-recipe':
-      ui.browserPlanTitle=(ui.browserPlanTitle===a.title)?null:a.title;
-      partialUpdate('recipe-browser-list',renderRecipeBrowserList());
-      break;
-    case 'browser-assign-slot':
-      setPlannerMeal(a.date,a.slot,a.title);
-      ui.browserPlanTitle=null;
-      break;
     case 'generate-random-recipes': if(!ui.generatingRandom) generateRandomRecipes();break;
     case 'toggle-browser-add-form':
       ui.browserShowAddForm=!ui.browserShowAddForm;
