@@ -450,7 +450,7 @@ let ui={
   cbSearch:'', cbMealFilter:'All', cbCanMake:false, cbFav:false, showAddCookbook:false,
   // planner
   plannerWeekOffset:0, plannerModal:null, // {date,slot}
-  plannerSearch:'', plannerShowCreate:false, plannerMealFilter:'All',
+  plannerSearch:'', plannerShowCreate:false, plannerMealFilter:'All', plannerShowLimit:40,
   // recipe browser (within planner tab)
   browserSearch:'', browserMealFilter:'All',
   browserShowAddForm:false, generatingRandom:false, generateError:'',
@@ -1171,8 +1171,8 @@ function renderPlannerModalBody(){
     );
   }
   if(ui.plannerMealFilter!=='All') cbFiltered=cbFiltered.filter(r=>r.mealType===ui.plannerMealFilter);
-  const SHOW_LIMIT=40;
-  const matches=cbFiltered.slice(0,SHOW_LIMIT);
+  const showLimit=ui.plannerShowLimit||40;
+  const matches=cbFiltered.slice(0,showLimit);
   const hiddenCount=cbFiltered.length-matches.length;
 
   const matchRows=matches.map(r=>{
@@ -1199,7 +1199,7 @@ function renderPlannerModalBody(){
       ? '<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#fff;">'+matchRows+'</div>'
       : q?'<div style="font-size:13px;color:var(--ink-soft);font-weight:700;padding:12px;background:var(--bg);border-radius:8px;">No recipes found for "'+h(q)+'"</div>'
         :'<div style="font-size:13px;color:var(--ink-soft);font-weight:700;padding:12px;background:var(--bg);border-radius:8px;">No recipes in cookbook yet — type a name to add one manually.</div>')+
-    (hiddenCount>0?'<div style="font-size:12px;color:var(--ink-soft);font-weight:700;padding:10px 4px 0;text-align:center;">+'+hiddenCount+' more — keep typing to narrow it down</div>':'')+
+    (hiddenCount>0?'<button type="button" data-action="planner-show-more" style="display:block;width:100%;background:none;border:none;font-size:12px;color:var(--green);font-weight:800;padding:10px 4px 0;text-align:center;cursor:pointer;">Show '+Math.min(hiddenCount,40)+' more (+'+hiddenCount+' left) — or keep typing to narrow it down</button>':'')+
   '</div>';
 
   const quickActions=q
@@ -2815,10 +2815,11 @@ document.addEventListener('click',e=>{
     // planner
     case 'open-planner-modal':
       ui.plannerModal={date:a.date,slot:a.slot};
-      ui.plannerSearch='';ui.plannerShowCreate=false;
+      ui.plannerSearch='';ui.plannerShowCreate=false;ui.plannerShowLimit=40;
       ui.plannerMealFilter= a.slot==='Breakfast'?'Breakfast':a.slot==='Lunch'?'Lunch':a.slot==='Dinner'?'Dinner':'All';
       renderModal();break;
-    case 'planner-filter-meal': ui.plannerMealFilter=a.val; partialUpdate('planner-modal-body',renderPlannerModalBody()); break;
+    case 'planner-filter-meal': ui.plannerMealFilter=a.val; ui.plannerShowLimit=40; partialUpdate('planner-modal-body',renderPlannerModalBody()); break;
+    case 'planner-show-more': ui.plannerShowLimit=(ui.plannerShowLimit||40)+40; partialUpdate('planner-modal-body',renderPlannerModalBody()); break;
     case 'close-modal': ui.plannerModal=null;ui.plannerSearch='';ui.plannerShowCreate=false;renderModal();break;
     case 'planner-pick-recipe':
       setPlannerMeal(a.date,a.slot,a.title);break;
@@ -2884,12 +2885,12 @@ document.addEventListener('click',e=>{
       // Open the planner recipe picker with create form pre-filled
       ui.cookingModal=null;renderCookingModal();
       ui.plannerModal={date:a.date,slot:a.slot};
-      ui.plannerSearch=a.title||'';ui.plannerShowCreate=true;
+      ui.plannerSearch=a.title||'';ui.plannerShowCreate=true;ui.plannerShowLimit=40;
       renderModal();break;
     case 'change-meal':
       ui.cookingModal=null;renderCookingModal();
       ui.plannerModal={date:a.date,slot:a.slot};
-      ui.plannerSearch='';ui.plannerShowCreate=false;
+      ui.plannerSearch='';ui.plannerShowCreate=false;ui.plannerShowLimit=40;
       ui.plannerMealFilter=a.slot==='Breakfast'?'Breakfast':a.slot==='Lunch'?'Lunch':a.slot==='Dinner'?'Dinner':'All';
       renderModal();break;
     // recipe browser (within planner tab)
@@ -2968,6 +2969,7 @@ document.addEventListener('input',e=>{
   else if(live==='household-name'){ui.householdEdit=el.value;}
   else if(live==='planner-search'){
     ui.plannerSearch=el.value;
+    ui.plannerShowLimit=40;
     partialUpdate('planner-modal-body', renderPlannerModalBody());
   }
   else if(live==='browser-search'){
