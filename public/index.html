@@ -92,6 +92,8 @@ input::placeholder,textarea::placeholder{color:var(--ink-soft);}
 /* SHELF */
 .shelf{margin-bottom:20px;}
 .shelf-header{display:flex;align-items:center;gap:9px;margin-bottom:8px;}
+.shelf-header.collapsible{width:100%;background:none;border:none;color:inherit;font:inherit;text-align:left;cursor:pointer;}
+.shelf-chevron{margin-left:auto;color:var(--ink-soft);font-size:11px;flex-shrink:0;}
 .shelf-tag{font-family:'Nunito';font-weight:900;font-size:12px;text-transform:uppercase;letter-spacing:.04em;padding:3px 11px;border-radius:20px;display:flex;align-items:center;gap:5px;}
 .shelf-count{font-size:12px;color:var(--ink-soft);font-weight:700;}
 
@@ -127,6 +129,7 @@ input::placeholder,textarea::placeholder{color:var(--ink-soft);}
 .cat-select:focus{outline:2px solid var(--green);outline-offset:1px;}
 .g-note{font-size:11.5px;color:var(--ink-soft);font-weight:600;margin-top:3px;}
 .low-tag{font-size:10px;font-weight:900;color:var(--orange);border:1px solid var(--orange);padding:1px 7px;border-radius:8px;margin-left:6px;}
+.priority-tag{font-size:10px;font-weight:900;color:#A23E1C;border:1px solid #A23E1C;padding:1px 7px;border-radius:8px;margin-left:6px;}
 
 /* GROCERY QUICK ADD */
 .g-quick-add{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:12px 16px;margin-bottom:16px;flex-wrap:wrap;box-shadow:var(--shadow-sm);}
@@ -469,7 +472,8 @@ let ui={
   myUserId:null, myRole:'member', myEmail:'',
   adminFamilies:[], adminLoaded:false, newInviteCode:'', newInviteExpires:'', newInviteLoading:false,
   accountMsg:'', accountErr:'', emailMsg:'', emailErr:'',
-  billingHistory:[], billingLoaded:false
+  billingHistory:[], billingLoaded:false,
+  collapsedGroups:new Set()
 };
 
 // ─── UTILS ────────────────────────────────────────────────────────────────
@@ -530,12 +534,17 @@ function adjustQty(id,delta){
 }
 
 // ─── ACTIONS: GROCERY ─────────────────────────────────────────────────────
-function addGroceryItem(name,category,note,fromLowStock,quantity,store){
+const PRIORITY_ORDER={high:0,normal:1,low:2};
+function byPriorityThenName(a,b){
+  return (PRIORITY_ORDER[a.priority||'normal']-PRIORITY_ORDER[b.priority||'normal'])||a.name.localeCompare(b.name);
+}
+function addGroceryItem(name,category,note,fromLowStock,quantity,store,priority){
   if(!name.trim()) return false;
   const dup=state.grocery.some(g=>!g.checked&&g.name.toLowerCase()===name.toLowerCase());
   if(dup) return false;
   state.grocery.push({id:uid(),name:name.trim(),category:category||'Other',note:note||'',
-    checked:false,fromLowStock:!!fromLowStock,quantity:quantity||'',store:store||''});
+    checked:false,fromLowStock:!!fromLowStock,quantity:quantity||'',store:store||'',
+    priority:priority||(fromLowStock?'high':'normal')});
   saveGrocery();return true;
 }
 function toggleChecked(id){const g=state.grocery.find(x=>x.id===id);if(g){g.checked=!g.checked;saveGrocery();render();}}
@@ -551,6 +560,14 @@ function addAllLowStock(){
   render();
 }
 function updateGroceryField(id,field,value){const g=state.grocery.find(x=>x.id===id);if(g){g[field]=value;saveGrocery();}}
+
+// ─── COLLAPSIBLE GROUPS (kitchen shelves, grocery by-category/by-store) ────
+function isCollapsed(key){return ui.collapsedGroups.has(key);}
+function toggleGroup(key){
+  if(ui.collapsedGroups.has(key)) ui.collapsedGroups.delete(key);
+  else ui.collapsedGroups.add(key);
+  render();
+}
 
 // ─── ACTIONS: COOKBOOK ────────────────────────────────────────────────────
 function saveRecipe(recipe){
@@ -1341,12 +1358,15 @@ function renderKitchenShelves(){
   return cats.map(cat=>{
     const items=filtered.filter(i=>i.category===cat.name).sort((a,b)=>a.name.localeCompare(b.name));
     if(!items.length) return '';
+    const key='kitchen:'+cat.name;
+    const collapsed=isCollapsed(key);
     return '<div class="shelf">'+
-      '<div class="shelf-header">'+
+      '<button type="button" class="shelf-header collapsible" data-action="toggle-group" data-group="'+h(key)+'">'+
         '<span class="shelf-tag" style="background:'+cat.bg+';color:'+cat.color+';">'+cat.emoji+' '+h(cat.name)+'</span>'+
         '<span class="shelf-count">'+items.length+'</span>'+
-      '</div>'+
-      items.map(item=>renderItemRow(item,cat)).join('')+
+        '<span class="shelf-chevron">'+(collapsed?'▸':'▾')+'</span>'+
+      '</button>'+
+      (collapsed?'':items.map(item=>renderItemRow(item,cat)).join(''))+
     '</div>';
   }).join('');
 }
@@ -1489,19 +1509,34 @@ function renderGrocery(){
 function renderGroceryByCategory(items){
   const cats=state.settings.categories;
   return cats.map(cat=>{
-    const inCat=items.filter(g=>g.category===cat.name).sort((a,b)=>a.name.localeCompare(b.name));
+    const inCat=items.filter(g=>g.category===cat.name).sort(byPriorityThenName);
     if(!inCat.length) return '';
+    const key='grocery-cat:'+cat.name;
+    const collapsed=isCollapsed(key);
     return '<div class="g-section">'+
-      '<div class="shelf-header"><span class="shelf-tag" style="background:'+cat.bg+';color:'+cat.color+';">'+cat.emoji+' '+h(cat.name)+'</span><span class="shelf-count">'+inCat.length+'</span></div>'+
-      inCat.map(g=>renderGroceryRow(g)).join('')+
+      '<button type="button" class="shelf-header collapsible" data-action="toggle-group" data-group="'+h(key)+'">'+
+        '<span class="shelf-tag" style="background:'+cat.bg+';color:'+cat.color+';">'+cat.emoji+' '+h(cat.name)+'</span>'+
+        '<span class="shelf-count">'+inCat.length+'</span>'+
+        '<span class="shelf-chevron">'+(collapsed?'▸':'▾')+'</span>'+
+      '</button>'+
+      (collapsed?'':inCat.map(g=>renderGroceryRow(g)).join(''))+
     '</div>';
   }).join('')+
   renderUncategorizedGrocery(items,cats.map(c=>c.name));
 }
 function renderUncategorizedGrocery(items,knownCats){
-  const unk=items.filter(g=>!knownCats.includes(g.category)).sort((a,b)=>a.name.localeCompare(b.name));
+  const unk=items.filter(g=>!knownCats.includes(g.category)).sort(byPriorityThenName);
   if(!unk.length) return '';
-  return '<div class="g-section"><div class="shelf-header"><span class="shelf-tag" style="background:#E2DCCB;color:#6B7160;">📦 Other</span></div>'+unk.map(g=>renderGroceryRow(g)).join('')+'</div>';
+  const key='grocery-cat:Other';
+  const collapsed=isCollapsed(key);
+  return '<div class="g-section">'+
+    '<button type="button" class="shelf-header collapsible" data-action="toggle-group" data-group="'+h(key)+'">'+
+      '<span class="shelf-tag" style="background:#E2DCCB;color:#6B7160;">📦 Other</span>'+
+      '<span class="shelf-count">'+unk.length+'</span>'+
+      '<span class="shelf-chevron">'+(collapsed?'▸':'▾')+'</span>'+
+    '</button>'+
+    (collapsed?'':unk.map(g=>renderGroceryRow(g)).join(''))+
+  '</div>';
 }
 function renderGroceryByStore(items){
   const storeOf=g=>(g.store||'').trim()||'No store';
@@ -1509,23 +1544,39 @@ function renderGroceryByStore(items){
     if(a==='No store') return 1; if(b==='No store') return -1; return a.localeCompare(b);
   });
   return stores.map(store=>{
-    const inStore=items.filter(g=>storeOf(g)===store).sort((a,b)=>a.name.localeCompare(b.name));
+    const inStore=items.filter(g=>storeOf(g)===store).sort(byPriorityThenName);
+    const key='grocery-store:'+store;
+    const collapsed=isCollapsed(key);
     return '<div class="g-section">'+
-      '<div class="shelf-header"><span class="shelf-tag" style="background:var(--border);color:var(--ink);">'+h(store)+'</span><span class="shelf-count">'+inStore.length+'</span></div>'+
-      inStore.map(g=>renderGroceryRow(g)).join('')+
+      '<button type="button" class="shelf-header collapsible" data-action="toggle-group" data-group="'+h(key)+'">'+
+        '<span class="shelf-tag" style="background:var(--border);color:var(--ink);">'+h(store)+'</span>'+
+        '<span class="shelf-count">'+inStore.length+'</span>'+
+        '<span class="shelf-chevron">'+(collapsed?'▸':'▾')+'</span>'+
+      '</button>'+
+      (collapsed?'':inStore.map(g=>renderGroceryRow(g)).join(''))+
     '</div>';
   }).join('');
 }
+const PRIORITY_STYLE={
+  high:{bg:'#F0D6C9',color:'#A23E1C',label:'🔴 High'},
+  normal:{bg:'#E8DDD0',color:'#6B7160',label:'Normal'},
+  low:{bg:'#DCE8CE',color:'#3A6E32',label:'🟢 Low'}
+};
 function renderGroceryRow(g){
   const cat=getCat(g.category);
+  const pri=g.priority||'normal';
+  const priStyle=PRIORITY_STYLE[pri];
   const catOptions=state.settings.categories.map(c=>
     '<option value="'+h(c.name)+'" '+(c.name===g.category?'selected':'')+'>'+c.emoji+' '+h(c.name)+'</option>'
+  ).join('');
+  const priOptions=['high','normal','low'].map(p=>
+    '<option value="'+p+'" '+(p===pri?'selected':'')+'>'+PRIORITY_STYLE[p].label+'</option>'
   ).join('');
   return '<div class="g-row '+(g.checked?'done':'')+'" style="border-left-color:'+cat.color+';" id="grow-'+g.id+'">'+
     '<button class="check-circle '+(g.checked?'checked':'')+'" data-action="toggle-checked" data-id="'+g.id+'">'+
       (g.checked?'✓':'')+'</button>'+
     '<div class="g-main">'+
-      '<div class="g-name">'+h(g.name)+(g.fromLowStock?'<span class="low-tag">low</span>':'')+'</div>'+
+      '<div class="g-name">'+h(g.name)+(g.fromLowStock?'<span class="low-tag">low</span>':'')+(pri==='high'?'<span class="priority-tag">🔴 priority</span>':'')+'</div>'+
       '<div class="g-fields">'+
         '<input class="g-input g-qty" value="'+h(g.quantity||'')+'" placeholder="qty" list="unit-dl"'+
           ' data-change="g-qty" data-id="'+g.id+'">'+
@@ -1533,10 +1584,16 @@ function renderGroceryRow(g){
           ' data-change="g-store" data-id="'+g.id+'">'+
       '</div>'+
       (g.note?'<div class="g-note">'+h(g.note)+'</div>':'')+
-      '<select class="cat-select" data-change="g-cat" data-id="'+g.id+'" '+
-        'style="background:'+cat.bg+';color:'+cat.color+';">'+
-        catOptions+
-      '</select>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;">'+
+        '<select class="cat-select" data-change="g-cat" data-id="'+g.id+'" '+
+          'style="background:'+cat.bg+';color:'+cat.color+';margin-top:0;">'+
+          catOptions+
+        '</select>'+
+        '<select class="cat-select" data-change="g-priority" data-id="'+g.id+'" '+
+          'style="background:'+priStyle.bg+';color:'+priStyle.color+';margin-top:0;">'+
+          priOptions+
+        '</select>'+
+      '</div>'+
     '</div>'+
     '<button class="btn-icon" data-action="delete-grocery" data-id="'+g.id+'">✕</button>'+
   '</div>';
@@ -1549,6 +1606,7 @@ function renderGroceryForm(){
       '<div class="field"><label>Category</label><select name="category">'+catOptions+'</select></div>'+
       '<div class="field"><label>Quantity</label><input name="quantity" placeholder="e.g. 2 bags"></div>'+
       '<div class="field"><label>Store</label><input name="store" list="store-dl" placeholder="e.g. Costco"></div>'+
+      '<div class="field"><label>Priority</label><select name="priority"><option value="normal">Normal</option><option value="high">🔴 High</option><option value="low">🟢 Low</option></select></div>'+
       '<div class="field"><label>Note</label><input name="note" placeholder="brand, size…"></div>'+
     '</div>'+
     '<div class="form-actions">'+
@@ -1916,9 +1974,43 @@ function renderHome(){
     '<div class="home-section-title">Today\'s menu</div>'+
     '<div class="today-menu-grid">'+mealCards+'</div>'+
   '</div>'+
+  renderGroceryPreview()+
   '<div>'+
     '<div class="home-section-title">Kitchen alerts</div>'+
     '<div class="alerts-grid">'+alertCards.join('')+'</div>'+
+  '</div>';
+}
+
+function renderGroceryPreview(){
+  const unchecked=state.grocery.filter(g=>!g.checked);
+  if(!unchecked.length) return '';
+
+  const storeOf=g=>(g.store||'').trim()||'No store';
+  const storeCounts={};
+  unchecked.forEach(g=>{ const s=storeOf(g); storeCounts[s]=(storeCounts[s]||0)+1; });
+  const stores=Object.keys(storeCounts).sort((a,b)=>{
+    if(a==='No store') return 1; if(b==='No store') return -1;
+    return storeCounts[b]-storeCounts[a] || a.localeCompare(b);
+  });
+  const storeChips=stores.map(s=>
+    '<button type="button" class="pill-btn" data-action="goto-grocery-store" data-store="'+(s==='No store'?'__none__':h(s))+'">🏪 '+h(s)+' · '+storeCounts[s]+'</button>'
+  ).join('');
+
+  const previewCount=6;
+  const sorted=unchecked.slice().sort(byPriorityThenName);
+  const previewItems=sorted.slice(0,previewCount);
+  const itemsLine=previewItems.map(g=>(g.priority==='high'?'🔴 ':'')+h(g.name)).join(' · ');
+  const moreCount=unchecked.length-previewItems.length;
+
+  return '<div style="margin-bottom:24px;">'+
+    '<div class="home-section-title">Grocery list</div>'+
+    '<div class="card card-lg">'+
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">'+storeChips+'</div>'+
+      '<div style="font-size:13.5px;color:var(--ink);font-weight:600;line-height:1.6;">'+
+        itemsLine+(moreCount>0?' <span style="color:var(--ink-soft);">+'+moreCount+' more</span>':'')+
+      '</div>'+
+      '<button type="button" class="btn-ghost" data-action="set-tab" data-tab="grocery" style="margin-top:10px;padding:0;color:var(--green);font-weight:800;">View full list →</button>'+
+    '</div>'+
   '</div>';
 }
 
@@ -2584,6 +2676,8 @@ document.addEventListener('click',e=>{
     case 'close-add-grocery': ui.showAddGrocery=false;render();break;
     case 'set-grocery-group': ui.groceryGroup=a.val;render();break;
     case 'toggle-show-checked': ui.showChecked=!ui.showChecked;render();break;
+    case 'toggle-group': toggleGroup(a.group);break;
+    case 'goto-grocery-store': ui.groceryGroup='store';ui.groceryStore=a.store==='__none__'?'':(a.store||'All');ui.tab='grocery';render();break;
     case 'share-grocery':{
       const text=state.grocery.filter(g=>!g.checked).map(g=>(g.quantity?g.quantity+' ':'')+g.name+(g.store?' ('+g.store+')':'')).join('\n');
       navigator.share({title:'Grocery List',text}).catch(()=>{});
@@ -2795,6 +2889,11 @@ document.addEventListener('change',e=>{
     // Partial update so border colour and select background both reflect new category
     partialUpdate('grocery-list-body', renderGroceryBody());
   }
+  else if(ch==='g-priority'){
+    updateGroceryField(el.dataset.id,'priority',el.value);
+    // Partial update since priority affects sort order and the badge shown
+    partialUpdate('grocery-list-body', renderGroceryBody());
+  }
   else if(ch==='grocery-store-filter'){ui.groceryStore=el.value;render();}
   else if(ch==='cook-meal'){ui.cookFilters.mealType=el.value;}
   else if(ch==='cook-cuisine'){ui.cookFilters.cuisine=el.value;render();}
@@ -2809,7 +2908,7 @@ document.addEventListener('submit',e=>{
   const fd=new FormData(form);
   if(form.dataset.form==='add-item'){addOrUpdateItem(fd);}
   else if(form.dataset.form==='add-grocery'){
-    addGroceryItem((fd.get('name')||'').trim(),fd.get('category')||'Other',(fd.get('note')||'').trim(),false,(fd.get('quantity')||'').trim(),(fd.get('store')||'').trim());
+    addGroceryItem((fd.get('name')||'').trim(),fd.get('category')||'Other',(fd.get('note')||'').trim(),false,(fd.get('quantity')||'').trim(),(fd.get('store')||'').trim(),fd.get('priority')||'normal');
     ui.showAddGrocery=false;saveGrocery();render();
   }
   else if(form.dataset.form==='add-cookbook'){addManualRecipe(fd);ui.browserShowAddForm=false;}
