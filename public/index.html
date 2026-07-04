@@ -180,7 +180,7 @@ input::placeholder,textarea::placeholder{color:var(--ink-soft);}
 .day-date{font-size:12px;color:var(--ink-soft);font-weight:700;}
 .today-chip{font-size:10px;font-weight:900;background:var(--green);color:#fff;padding:2px 8px;border-radius:8px;}
 .planner-slots{display:grid;grid-template-columns:repeat(3,1fr);}
-.planner-slot{padding:10px 12px;border-right:1px solid var(--border);min-height:76px;cursor:pointer;transition:background .1s;}
+.planner-slot{display:block;width:100%;background:none;border:none;border-right:1px solid var(--border);text-align:left;color:inherit;font:inherit;padding:10px 12px;min-height:76px;cursor:pointer;transition:background .1s;}
 .planner-slot:last-child{border-right:none;}
 .planner-slot:hover{background:#F7F3EC;}
 .slot-label{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);margin-bottom:5px;}
@@ -265,7 +265,7 @@ input::placeholder,textarea::placeholder{color:var(--ink-soft);}
 .alert-card-body{font-size:13px;font-weight:700;color:var(--ink);}
 /* GETTING STARTED */
 .gs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;}
-.gs-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:16px;cursor:pointer;transition:box-shadow .12s,border-color .12s;text-align:left;}
+.gs-card{display:block;width:100%;background:var(--card);color:inherit;font:inherit;border:1px solid var(--border);border-radius:var(--r);padding:16px;cursor:pointer;transition:box-shadow .12s,border-color .12s;text-align:left;}
 .gs-card:hover{box-shadow:var(--shadow);border-color:var(--green);}
 .gs-card-emoji{font-size:24px;margin-bottom:8px;}
 .gs-card-title{font-weight:900;font-size:14px;margin-bottom:3px;}
@@ -281,7 +281,7 @@ input::placeholder,textarea::placeholder{color:var(--ink-soft);}
 .cooking-body{padding:18px 22px;flex:1;overflow-y:auto;}
 .cooking-section-label{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);margin:18px 0 9px;}
 .cooking-section-label:first-child{margin-top:0;}
-.cook-ing-row{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px dashed var(--border);cursor:pointer;user-select:none;}
+.cook-ing-row{display:flex;width:100%;align-items:center;gap:11px;padding:9px 0;background:none;border:none;border-bottom:1px dashed var(--border);text-align:left;color:inherit;font:inherit;cursor:pointer;user-select:none;}
 .cook-ing-row:last-child{border-bottom:none;}
 .cook-check{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;transition:all .12s;}
 .cook-check.have{border-color:var(--green);color:var(--green);}
@@ -1880,30 +1880,30 @@ function renderHome(){
     '<div class="home-section-title">Welcome to PantryPal 🎉</div>'+
     '<p style="color:var(--ink-soft);font-size:13.5px;font-weight:600;margin:-4px 0 14px;line-height:1.5;">Let\'s get your kitchen set up. Here\'s where to start:</p>'+
     '<div class="gs-grid">'+
-      '<div class="gs-card" data-action="set-tab" data-tab="kitchen">'+
+      '<button type="button" class="gs-card" data-action="set-tab" data-tab="kitchen">'+
         '<div class="gs-step">1</div>'+
         '<div class="gs-card-emoji">🥕</div>'+
         '<div class="gs-card-title">Stock your kitchen</div>'+
         '<div class="gs-card-desc">Add what you already have so PantryPal knows what you can cook.</div>'+
-      '</div>'+
-      '<div class="gs-card" data-action="set-tab" data-tab="cook">'+
+      '</button>'+
+      '<button type="button" class="gs-card" data-action="set-tab" data-tab="cook">'+
         '<div class="gs-step">2</div>'+
         '<div class="gs-card-emoji">✦</div>'+
         '<div class="gs-card-title">Find a recipe</div>'+
         '<div class="gs-card-desc">Browse hundreds of recipes or generate new ones with AI.</div>'+
-      '</div>'+
-      '<div class="gs-card" data-action="set-tab" data-tab="planner">'+
+      '</button>'+
+      '<button type="button" class="gs-card" data-action="set-tab" data-tab="planner">'+
         '<div class="gs-step">3</div>'+
         '<div class="gs-card-emoji">🗓</div>'+
         '<div class="gs-card-title">Plan your week</div>'+
         '<div class="gs-card-desc">Drop recipes into breakfast, lunch, and dinner slots.</div>'+
-      '</div>'+
-      '<div class="gs-card" data-action="set-tab" data-tab="grocery">'+
+      '</button>'+
+      '<button type="button" class="gs-card" data-action="set-tab" data-tab="grocery">'+
         '<div class="gs-step">4</div>'+
         '<div class="gs-card-emoji">🛒</div>'+
         '<div class="gs-card-title">Build a grocery list</div>'+
         '<div class="gs-card-desc">Track what you need and add missing recipe ingredients in one tap.</div>'+
-      '</div>'+
+      '</button>'+
     '</div>'+
   '</div>' : '';
 
@@ -1954,11 +1954,11 @@ function renderCookingModal(){
         const done=!!(checklist&&checklist[i.name]);
         const cls=done?'done':(i.have?'have':'need');
         const icon=done?'✓':(i.have?'✓':'·');
-        return '<div class="cook-ing-row" data-action="toggle-cooking-ingredient" data-name="'+h(i.name)+'">'+
+        return '<button type="button" class="cook-ing-row" data-action="toggle-cooking-ingredient" data-name="'+h(i.name)+'">'+
           '<div class="cook-check '+cls+'">'+icon+'</div>'+
           '<span class="cook-ing-text '+(done?'done':'')+'">'+h(i.name)+'</span>'+
           (i.quantity?'<span class="cook-ing-qty">'+h(i.quantity)+'</span>':'')+
-        '</div>';
+        '</button>';
       }).join(''):'';
 
     const stepsHtml=recipe.steps&&recipe.steps.length?'<div class="cooking-section-label">Steps</div>'+
@@ -2143,12 +2143,12 @@ function renderPlanner(){
       const cbEntry=meal?state.cookbook.find(r=>r.title.toLowerCase()===meal.toLowerCase()):null;
       const avail=cbEntry?recipeAvailability(cbEntry):null;
       const dot=avail&&avail.missing===0?'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;vertical-align:middle;flex-shrink:0;"></span>':'';
-      return '<div class="planner-slot" data-action="'+action+'" data-date="'+key+'" data-slot="'+h(slot)+'"'+extraAttrs+'>'+
+      return '<button type="button" class="planner-slot" data-action="'+action+'" data-date="'+key+'" data-slot="'+h(slot)+'"'+extraAttrs+'>'+
         '<div class="slot-label">'+emoji+' '+slot+'</div>'+
         (meal
           ?'<div class="slot-meal" style="display:flex;align-items:baseline;gap:4px;">'+dot+h(meal)+'</div>'
           :'<div class="slot-add-btn">＋ Add</div>')+
-      '</div>';
+      '</button>';
     }).join('');
     return '<div class="planner-day">'+
       '<div class="planner-day-header">'+
@@ -2221,7 +2221,7 @@ function renderSettingsCats(){
   const list=cats.map(cat=>{
     const editing=ui.editCatId===cat.id;
     const count=state.inventory.filter(i=>i.category===cat.name).length;
-    const swatches=SWATCH_COLORS.map(sc=>'<div class="color-swatch '+(ui.editCatColor===sc?'selected':'')+'" style="background:'+sc+';" data-action="set-edit-cat-color" data-val="'+sc+'"></div>').join('');
+    const swatches=SWATCH_COLORS.map(sc=>'<button type="button" class="color-swatch '+(ui.editCatColor===sc?'selected':'')+'" aria-label="'+sc+'" style="background:'+sc+';" data-action="set-edit-cat-color" data-val="'+sc+'"></button>').join('');
     return '<div class="settings-row" style="flex-direction:column;align-items:stretch;">'+
       '<div style="display:flex;align-items:center;gap:10px;">'+
         '<span class="settings-dot" style="background:'+cat.color+';"></span>'+
@@ -2252,7 +2252,7 @@ function renderSettingsCats(){
       '<div class="field"><label>Name</label><input id="new-cat-name" value="'+h(ui.newCatName)+'" placeholder="e.g. Condiments"></div>'+
       '<div class="field"><label>Emoji</label><input id="new-cat-emoji" value="'+h(ui.newCatEmoji)+'" style="font-size:18px;"></div>'+
     '</div>'+
-    '<div class="color-swatches">'+SWATCH_COLORS.map(sc=>'<div class="color-swatch '+(ui.newCatColor===sc?'selected':'')+'" style="background:'+sc+';" data-action="set-new-cat-color" data-val="'+sc+'"></div>').join('')+'</div>'+
+    '<div class="color-swatches">'+SWATCH_COLORS.map(sc=>'<button type="button" class="color-swatch '+(ui.newCatColor===sc?'selected':'')+'" aria-label="'+sc+'" style="background:'+sc+';" data-action="set-new-cat-color" data-val="'+sc+'"></button>').join('')+'</div>'+
     '<div class="form-actions">'+
       '<button class="btn btn-primary" data-action="add-category">Add category</button>'+
       '<button class="btn btn-secondary" data-action="cancel-add-cat">Cancel</button>'+
