@@ -1160,11 +1160,20 @@ function renderPlannerModalBody(){
     '<button class="pill-btn '+(ui.plannerMealFilter===m?'active':'')+'" data-action="planner-filter-meal" data-val="'+m+'" style="font-size:11px;padding:4px 11px;">'+m+'</button>'
   ).join('');
 
-  // Filter cookbook by search + meal type filter
+  // Filter cookbook by search (title, cuisine, or ingredient) + meal type filter
   let cbFiltered=state.cookbook;
-  if(q) cbFiltered=cbFiltered.filter(r=>r.title.toLowerCase().includes(q.toLowerCase())||(r.cuisine&&r.cuisine.toLowerCase().includes(q.toLowerCase())));
+  if(q){
+    const ql=q.toLowerCase();
+    cbFiltered=cbFiltered.filter(r=>
+      r.title.toLowerCase().includes(ql)
+      ||(r.cuisine&&r.cuisine.toLowerCase().includes(ql))
+      ||(r.ingredients&&r.ingredients.some(i=>((i&&i.name)||i||'').toLowerCase().includes(ql)))
+    );
+  }
   if(ui.plannerMealFilter!=='All') cbFiltered=cbFiltered.filter(r=>r.mealType===ui.plannerMealFilter);
-  const matches=cbFiltered.slice(0,8);
+  const SHOW_LIMIT=40;
+  const matches=cbFiltered.slice(0,SHOW_LIMIT);
+  const hiddenCount=cbFiltered.length-matches.length;
 
   const matchRows=matches.map(r=>{
     const avail=recipeAvailability(r);
@@ -1190,6 +1199,7 @@ function renderPlannerModalBody(){
       ? '<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#fff;">'+matchRows+'</div>'
       : q?'<div style="font-size:13px;color:var(--ink-soft);font-weight:700;padding:12px;background:var(--bg);border-radius:8px;">No recipes found for "'+h(q)+'"</div>'
         :'<div style="font-size:13px;color:var(--ink-soft);font-weight:700;padding:12px;background:var(--bg);border-radius:8px;">No recipes in cookbook yet — type a name to add one manually.</div>')+
+    (hiddenCount>0?'<div style="font-size:12px;color:var(--ink-soft);font-weight:700;padding:10px 4px 0;text-align:center;">+'+hiddenCount+' more — keep typing to narrow it down</div>':'')+
   '</div>';
 
   const quickActions=q
