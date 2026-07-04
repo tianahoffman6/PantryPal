@@ -372,6 +372,7 @@ async function api(method,path,body){
 }
 
 function signOut(){
+  stopBackgroundSync();
   localStorage.removeItem('pp-token');
   authToken=null;
   ui.meLoaded=false;ui.isOwnerFamily=false;
@@ -385,8 +386,11 @@ function signOut(){
   renderLogin();
 }
 
+const pendingSaveKeys=new Set(); // keys with an in-flight save — background sync must not stomp these
 function persistState(key,value){
+  pendingSaveKeys.add(key);
   api('PUT','state/'+key,value).then(res=>{
+    pendingSaveKeys.delete(key);
     if(!authToken) return; // signOut() already handled a 401
     ui.syncError = res===null ? "Couldn't save your changes. Check your connection." : '';
     render();
@@ -430,6 +434,44 @@ async function loadState(){
     }
   }
   return true;
+}
+
+// ─── BACKGROUND SYNC ────────────────────────────────────────────────────────
+// So two people using the same household (e.g. both grocery shopping at once)
+// see each other's changes without a manual page reload.
+let syncTimer=null;
+const SYNC_STATE_KEYS=['inventory','grocery','cookbook','planner','settings'];
+function startBackgroundSync(){
+  if(syncTimer) return;
+  syncTimer=setInterval(pollForUpdates,8000);
+}
+function stopBackgroundSync(){
+  if(syncTimer){clearInterval(syncTimer);syncTimer=null;}
+}
+function isSafeToApplyBackgroundUpdate(){
+  // Never clobber an in-progress edit: open modals/forms may hold typed text that
+  // isn't synced to `ui` until submit, and a full re-render would wipe it silently.
+  if(ui.plannerModal||ui.assignModal||ui.recipeViewModal||ui.cookingModal) return false;
+  if(ui.showAddItem||ui.editingItemId||ui.showAddGrocery||ui.showAddCookbook||ui.browserShowAddForm) return false;
+  if(ui.editCatId) return false;
+  const active=document.activeElement;
+  if(active&&/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return false;
+  return true;
+}
+async function pollForUpdates(){
+  if(!authToken||!isSafeToApplyBackgroundUpdate()) return;
+  const data=await api('GET','state');
+  if(data===null||!authToken||!isSafeToApplyBackgroundUpdate()) return; // re-check: user may have started editing while this was in flight
+  let changed=false;
+  SYNC_STATE_KEYS.forEach(key=>{
+    if(pendingSaveKeys.has(key)) return; // a local save for this key is still in flight — don't stomp it
+    if(data[key]===undefined) return;
+    if(JSON.stringify(data[key])!==JSON.stringify(state[key])){
+      state[key]=data[key];
+      changed=true;
+    }
+  });
+  if(changed) render();
 }
 function saveInv(){persistState('inventory',state.inventory);}
 function saveGrocery(){persistState('grocery',state.grocery);}
@@ -1176,6 +1218,7 @@ async function boot(){
     }
   }
   if(!ui.creditsLoaded) loadCredits(); // background — powers the low-credit warning chips
+  startBackgroundSync();
   render();
 }
 
