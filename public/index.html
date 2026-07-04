@@ -182,15 +182,20 @@ input::placeholder,textarea::placeholder{color:var(--ink-soft);}
 .day-label{font-family:'Bitter',Georgia,serif;font-weight:700;font-size:15px;}
 .day-date{font-size:12px;color:var(--ink-soft);font-weight:700;}
 .today-chip{font-size:10px;font-weight:900;background:var(--green);color:#fff;padding:2px 8px;border-radius:8px;}
-.planner-slots{display:grid;grid-template-columns:repeat(3,1fr);}
-.planner-slot{display:block;width:100%;background:none;border:none;border-right:1px solid var(--border);text-align:left;color:inherit;font:inherit;padding:10px 12px;min-height:76px;cursor:pointer;transition:background .1s;}
-.planner-slot:last-child{border-right:none;}
+.planner-slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));}
+.planner-slot{display:block;width:100%;background:none;border:none;border-right:1px solid var(--border);border-bottom:1px solid var(--border);text-align:left;color:inherit;font:inherit;padding:10px 12px;min-height:76px;cursor:pointer;transition:background .1s;}
 .planner-slot:hover{background:#F7F3EC;}
+.planner-slot-filled{cursor:default;}
+.planner-slot-filled:hover{background:none;}
 .slot-label{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);margin-bottom:5px;}
 .slot-add-btn{display:flex;align-items:center;justify-content:center;gap:5px;border:1.5px dashed var(--border);border-radius:8px;color:var(--ink-soft);font-size:11px;font-weight:800;padding:7px 4px;min-height:34px;margin-top:2px;transition:border-color .15s,color .15s;}
 .planner-slot:hover .slot-add-btn{border-color:var(--green);color:var(--green);}
 .slot-meal{font-size:13px;font-weight:700;color:var(--ink);line-height:1.35;}
 .slot-meal-meta{font-size:10px;color:var(--ink-soft);font-weight:700;margin-top:3px;}
+.slot-meal-row{display:flex;align-items:center;width:100%;background:none;border:none;text-align:left;color:var(--ink);font:inherit;font-size:13px;font-weight:700;line-height:1.35;padding:3px 0;cursor:pointer;}
+.slot-meal-row:hover{color:var(--green);}
+.slot-add-more-btn{display:block;width:100%;background:none;border:none;text-align:left;color:var(--ink-soft);font-size:11px;font-weight:800;padding:4px 0 0;margin-top:2px;cursor:pointer;}
+.slot-add-more-btn:hover{color:var(--green);}
 /* Recipe Browser */
 .recipe-browser-section{margin-top:32px;border-top:2px solid var(--border);padding-top:26px;}
 .recipe-browser-header{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap;}
@@ -312,9 +317,9 @@ input::placeholder,textarea::placeholder{color:var(--ink-soft);}
 <script>
 // ─── CONSTANTS ────────────────────────────────────────────────────────────
 const LOCATIONS = ['Fridge','Freezer','Pantry','Counter'];
-const MEAL_TYPES_FILTER = ['Any','Breakfast','Lunch','Dinner','Snack'];
+const MEAL_TYPES_FILTER = ['Any','Breakfast','Lunch','Dinner','Snack','Dessert'];
 const CUISINES = ['Any','Italian','Mexican','Indian','Chinese','Japanese','Thai','Vietnamese','Korean','Mediterranean','Middle Eastern','French','American','Greek','Spanish','Other'];
-const MEAL_SLOTS = ['Breakfast','Lunch','Dinner'];
+const MEAL_SLOTS = ['Breakfast','Lunch','Dinner','Snack','Dessert'];
 const SWATCH_COLORS = ['#4F7042','#C2941F','#A23E1C','#8B6914','#2E5A6B','#5A3A7A','#7A3A52','#295C52','#5A5A37','#8C4E14','#6B7160','#3A6E32'];
 const AVATAR_COLORS = ['#4A7C3E','#C4693A','#2E5A6B','#7A3A52','#C2941F','#5A3A7A'];
 const UNIT_LIST = ['pcs','g','kg','oz','lb','ml','l','cups','tbsp','tsp','cans','jars','boxes','bags','bunches','cloves'];
@@ -587,12 +592,37 @@ function addMissingToGrocery(idx){
 }
 
 // ─── ACTIONS: PLANNER ─────────────────────────────────────────────────────
-function getPlannerDay(dateStr){return state.planner[dateStr]||(state.planner[dateStr]={breakfast:'',lunch:'',dinner:''});}
-function setPlannerMeal(dateStr,slot,title){
-  getPlannerDay(dateStr)[slot.toLowerCase()]=title;savePlanner();ui.plannerModal=null;render();
+// Each slot holds an array of recipe titles so more than one dish (e.g. a dinner
+// party) can be planned per meal. Older saved days may still have a plain string —
+// slotMeals() normalizes either shape to an array.
+function getPlannerDay(dateStr){return state.planner[dateStr]||(state.planner[dateStr]={breakfast:[],lunch:[],dinner:[],snack:[],dessert:[]});}
+function slotMeals(dayData,slot){
+  const v=dayData&&dayData[slot.toLowerCase()];
+  if(!v) return [];
+  return Array.isArray(v)?v:[v];
 }
-function clearPlannerMeal(dateStr,slot){
-  getPlannerDay(dateStr)[slot.toLowerCase()]='';savePlanner();render();
+function addPlannerMeal(dateStr,slot,title){
+  const day=getPlannerDay(dateStr),key=slot.toLowerCase();
+  const cur=slotMeals(day,slot);
+  day[key]=cur.includes(title)?cur:[...cur,title];
+  savePlanner();ui.plannerModal=null;render();
+}
+function replacePlannerMeal(dateStr,slot,oldTitle,newTitle){
+  const day=getPlannerDay(dateStr),key=slot.toLowerCase();
+  const cur=slotMeals(day,slot);
+  const idx=cur.indexOf(oldTitle);
+  day[key]=idx>-1?cur.map((t,i)=>i===idx?newTitle:t):(cur.includes(newTitle)?cur:[...cur,newTitle]);
+  savePlanner();ui.plannerModal=null;render();
+}
+function commitPlannerMeal(dateStr,slot,title){
+  const modal=ui.plannerModal;
+  if(modal&&modal.mode==='replace'&&modal.oldTitle) replacePlannerMeal(dateStr,slot,modal.oldTitle,title);
+  else addPlannerMeal(dateStr,slot,title);
+}
+function removePlannerMeal(dateStr,slot,title){
+  const day=getPlannerDay(dateStr),key=slot.toLowerCase();
+  day[key]=slotMeals(day,slot).filter(t=>t!==title);
+  savePlanner();render();
 }
 function addWeekMissingToGrocery(){
   const ws=getWeekStart(ui.plannerWeekOffset);
@@ -600,9 +630,10 @@ function addWeekMissingToGrocery(){
     const d=new Date(ws);d.setDate(d.getDate()+i);
     const key=dateKey(d);const day=state.planner[key];if(!day)continue;
     MEAL_SLOTS.forEach(slot=>{
-      const mealTitle=day[slot.toLowerCase()];if(!mealTitle)return;
-      const cbRecipe=state.cookbook.find(r=>r.title.toLowerCase()===mealTitle.toLowerCase());
-      if(cbRecipe)(cbRecipe.missingIngredients||[]).forEach(n=>addGroceryItem(n,'Other','',false));
+      slotMeals(day,slot).forEach(mealTitle=>{
+        const cbRecipe=state.cookbook.find(r=>r.title.toLowerCase()===mealTitle.toLowerCase());
+        if(cbRecipe)(cbRecipe.missingIngredients||[]).forEach(n=>addGroceryItem(n,'Other','',false));
+      });
     });
   }
   saveGrocery();render();ui.tab='grocery';render();
@@ -1150,13 +1181,14 @@ async function boot(){
 
 function renderPlannerModalBody(){
   if(!ui.plannerModal) return '';
-  const{date,slot}=ui.plannerModal;
-  const currentMeal=getPlannerDay(date)[slot.toLowerCase()]||'';
+  const{date,slot,mode,oldTitle}=ui.plannerModal;
+  const isReplace=mode==='replace'&&oldTitle;
+  const currentMeals=slotMeals(getPlannerDay(date),slot);
   const q=(ui.plannerSearch||'').trim();
   const showCreate=ui.plannerShowCreate;
 
   // Meal filter pills for narrowing recipe list
-  const mealPills=['All','Breakfast','Lunch','Dinner','Snack'].map(m=>
+  const mealPills=['All','Breakfast','Lunch','Dinner','Snack','Dessert'].map(m=>
     '<button class="pill-btn '+(ui.plannerMealFilter===m?'active':'')+'" data-action="planner-filter-meal" data-val="'+m+'" style="font-size:11px;padding:4px 11px;">'+m+'</button>'
   ).join('');
 
@@ -1205,7 +1237,7 @@ function renderPlannerModalBody(){
   const quickActions=q
     ?'<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">'+
         '<button class="btn btn-primary" data-action="planner-manual-add" data-date="'+h(date)+'" data-slot="'+h(slot)+'" style="text-align:left;justify-content:flex-start;gap:8px;">'+
-          '<span>＋</span> Add <strong>"'+h(q)+'"</strong> to planner'+
+          '<span>＋</span> '+(isReplace?'Replace with':'Add')+' <strong>"'+h(q)+'"</strong>'+
         '</button>'+
         (!showCreate
           ?'<button data-action="planner-toggle-create" style="background:none;border:1.5px dashed var(--border);border-radius:10px;padding:10px 14px;cursor:pointer;font-size:13px;font-weight:800;color:var(--ink-soft);text-align:left;display:flex;align-items:center;gap:8px;">'+
@@ -1215,7 +1247,7 @@ function renderPlannerModalBody(){
       +'</div>'
     :'';
 
-  const mealOpts=['Breakfast','Lunch','Dinner','Snack'].map(m=>'<option value="'+m+'" '+(m===slot?'selected':'')+'>'+m+'</option>').join('');
+  const mealOpts=['Breakfast','Lunch','Dinner','Snack','Dessert'].map(m=>'<option value="'+m+'" '+(m===slot?'selected':'')+'>'+m+'</option>').join('');
   const cuisineOpts=state.settings.cuisines.map(c=>'<option value="'+h(c)+'">'+h(c)+'</option>').join('');
   const createForm=showCreate
     ?'<div style="background:var(--bg);border-radius:12px;padding:16px;border:1.5px solid var(--border);margin-bottom:14px;">'+
@@ -1239,10 +1271,18 @@ function renderPlannerModalBody(){
       '</div>'
     :'';
 
-  const currentInfo=currentMeal&&!showCreate
-    ?'<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;">'+
-        '<span style="font-size:13px;color:var(--ink-soft);font-weight:700;flex:1;">Current: <strong style="color:var(--ink);">'+h(currentMeal)+'</strong></span>'+
-        '<button class="btn btn-ghost" data-action="clear-planner-meal" data-date="'+h(date)+'" data-slot="'+h(slot)+'" style="color:var(--orange);font-size:12px;">Clear slot</button>'+
+  const currentInfo=currentMeals.length&&!showCreate
+    ?'<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">'+
+        '<div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);margin-bottom:8px;">Already planned for '+h(slot)+'</div>'+
+        currentMeals.map(m=>{
+          const beingReplaced=isReplace&&m===oldTitle;
+          return '<div style="display:flex;align-items:center;gap:10px;padding:5px 0;">'+
+            '<span style="font-size:13px;font-weight:700;flex:1;color:'+(beingReplaced?'var(--green)':'var(--ink)')+';">'+h(m)+
+              (beingReplaced?' <span style="font-weight:600;color:var(--ink-soft);">(replacing this one)</span>':'')+
+            '</span>'+
+            '<button class="btn btn-ghost" data-action="clear-planner-meal" data-date="'+h(date)+'" data-slot="'+h(slot)+'" data-title="'+h(m)+'" style="color:var(--orange);font-size:12px;">Remove</button>'+
+          '</div>';
+        }).join('')+
       '</div>'
     :'';
 
@@ -1259,7 +1299,8 @@ function renderModal(){
 }
 
 function renderChooseRecipeModal(){
-  const{date,slot}=ui.plannerModal;
+  const{date,slot,mode,oldTitle}=ui.plannerModal;
+  const isReplace=mode==='replace'&&oldTitle;
   const dObj=new Date(date+'T00:00:00');
   const dayAbbr=dObj.toLocaleDateString(undefined,{weekday:'short'});
   return (
@@ -1268,7 +1309,7 @@ function renderChooseRecipeModal(){
         // Header (never re-renders while typing)
         '<div style="padding:20px 22px 0;flex-shrink:0;">'+
           '<button class="modal-close" data-action="close-modal">×</button>'+
-          '<div class="modal-title" style="margin-bottom:2px;">Choose a recipe</div>'+
+          '<div class="modal-title" style="margin-bottom:2px;">'+(isReplace?'Replace "'+h(oldTitle)+'"':'Choose a recipe')+'</div>'+
           '<div style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:16px;">'+
             h(dayAbbr)+' — '+h(slot)+
           '</div>'+
@@ -1371,13 +1412,13 @@ function renderAssignModal(){
     const dayLabel=d.toLocaleDateString(undefined,{weekday:'long'});
     const dateStr=d.toLocaleDateString(undefined,{month:'short',day:'numeric'});
     const slots=MEAL_SLOTS.map(slot=>{
-      const meal=dayData[slot.toLowerCase()]||'';
+      const meals=slotMeals(dayData,slot);
       const emoji=SLOT_EMOJI[slot]||'';
       return '<button type="button" class="planner-slot" data-action="assign-modal-pick-slot" data-date="'+key+'" data-slot="'+h(slot)+'" '+
-        'title="'+(meal?'Replace '+h(meal):'Add here')+'">'+
+        'title="'+(meals.length?'Add alongside '+h(meals.join(', ')):'Add here')+'">'+
         '<div class="slot-label">'+emoji+' '+slot+'</div>'+
-        (meal
-          ?'<div class="slot-meal" style="color:var(--ink-soft);">'+h(meal)+'</div>'
+        (meals.length
+          ?meals.map(m=>'<div class="slot-meal" style="color:var(--ink-soft);">'+h(m)+'</div>').join('')+'<div class="slot-add-btn" style="margin-top:4px;">＋ Add another</div>'
           :'<div class="slot-add-btn">＋ Add</div>')+
       '</button>';
     }).join('');
@@ -1986,21 +2027,29 @@ function renderHome(){
   const dayFull=today.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'});
   const name=state.settings.householdName||'';
 
-  const mealCards=MEAL_SLOTS.map(slot=>{
-    const meal=dayData[slot.toLowerCase()]||'';
+  // Snack/Dessert cards only show up once something's actually planned, so an
+  // ordinary day still looks like the original 3-card Breakfast/Lunch/Dinner view.
+  const CORE_SLOTS=['Breakfast','Lunch','Dinner'];
+  const slotsToShow=MEAL_SLOTS.filter(slot=>CORE_SLOTS.includes(slot)||slotMeals(dayData,slot).length);
+  const mealCards=slotsToShow.map(slot=>{
+    const meals=slotMeals(dayData,slot);
     const emoji=SLOT_EMOJI[slot]||'';
-    const cbEntry=meal?state.cookbook.find(r=>r.title.toLowerCase()===meal.toLowerCase()):null;
-    const avail=cbEntry?recipeAvailability(cbEntry):null;
-    const availText=avail?(avail.missing===0
-      ?'<span style="color:var(--green);">✅ Ready to cook</span>'
-      :'<span style="color:var(--gold);">'+avail.have+'/'+avail.total+' ingredients in kitchen</span>'):'';
-    const cardAttrs=meal?'data-action="open-cooking-mode" data-date="'+key+'" data-slot="'+h(slot)+'" data-meal="'+h(meal)+'"':'';
-    return '<div class="today-meal-card '+(meal?'has-meal':'')+'" '+cardAttrs+'>'+
+    const items=meals.map(meal=>{
+      const cbEntry=state.cookbook.find(r=>r.title.toLowerCase()===meal.toLowerCase());
+      const avail=cbEntry?recipeAvailability(cbEntry):null;
+      const availText=avail?(avail.missing===0
+        ?'<span style="color:var(--green);">✅ Ready to cook</span>'
+        :'<span style="color:var(--gold);">'+avail.have+'/'+avail.total+' ingredients in kitchen</span>'):'';
+      return '<div style="margin-bottom:8px;">'+
+        '<div class="today-meal-name">'+h(meal)+'</div>'+
+        (availText?'<div class="today-meal-avail">'+availText+'</div>':'')+
+        '<button class="today-cook-btn" data-action="open-cooking-mode" data-date="'+key+'" data-slot="'+h(slot)+'" data-meal="'+h(meal)+'">▶ Cook it</button>'+
+      '</div>';
+    }).join('');
+    return '<div class="today-meal-card '+(meals.length?'has-meal':'')+'">'+
       '<div class="today-meal-slot-label">'+emoji+' '+slot+'</div>'+
-      (meal
-        ?'<div class="today-meal-name">'+h(meal)+'</div>'+
-          (availText?'<div class="today-meal-avail">'+availText+'</div>':'')+
-          '<button class="today-cook-btn" data-action="open-cooking-mode" data-date="'+key+'" data-slot="'+h(slot)+'" data-meal="'+h(meal)+'">▶ Cook it</button>'
+      (meals.length
+        ?items+'<button class="today-plan-btn" data-action="set-tab" data-tab="planner">+ Add another</button>'
         :'<div class="today-meal-empty">Nothing planned</div>'+
           '<button class="today-plan-btn" data-action="set-tab" data-tab="planner">+ Plan today</button>')+
     '</div>';
@@ -2143,7 +2192,7 @@ function renderCookingModal(){
 
   let body='',footer='';
   const footerBase=
-    '<button class="btn btn-secondary" data-action="change-meal" data-date="'+h(date)+'" data-slot="'+h(slot)+'">Change meal</button>'+
+    '<button class="btn btn-secondary" data-action="change-meal" data-date="'+h(date)+'" data-slot="'+h(slot)+'" data-meal="'+h(meal)+'">Change meal</button>'+
     '<button class="btn btn-secondary" data-action="close-cooking-modal">Done</button>';
 
   if(generating){
@@ -2239,7 +2288,7 @@ async function generateRecipeForMeal(){
 }
 
 
-const SLOT_EMOJI={'Breakfast':'🌅','Lunch':'🍳','Dinner':'🌙'};
+const SLOT_EMOJI={'Breakfast':'🌅','Lunch':'🍳','Dinner':'🌙','Snack':'🍿','Dessert':'🍰'};
 
 async function generateRandomRecipes(){
   ui.generatingRandom=true;
@@ -2319,21 +2368,26 @@ function renderPlanner(){
     const dayLabel=d.toLocaleDateString(undefined,{weekday:'long'});
     const dateStr=d.toLocaleDateString(undefined,{month:'short',day:'numeric'});
     const slots=MEAL_SLOTS.map(slot=>{
-      const meal=dayData[slot.toLowerCase()]||'';
+      const meals=slotMeals(dayData,slot);
       const emoji=SLOT_EMOJI[slot]||'';
-      // If meal exists, clicking opens cooking mode; if empty, opens recipe picker
-      const action=meal?'open-cooking-mode':'open-planner-modal';
-      const extraAttrs=meal?' data-meal="'+h(meal)+'"':'';
-      // Show a green dot if all ingredients are in kitchen
-      const cbEntry=meal?state.cookbook.find(r=>r.title.toLowerCase()===meal.toLowerCase()):null;
-      const avail=cbEntry?recipeAvailability(cbEntry):null;
-      const dot=avail&&avail.missing===0?'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;vertical-align:middle;flex-shrink:0;"></span>':'';
-      return '<button type="button" class="planner-slot" data-action="'+action+'" data-date="'+key+'" data-slot="'+h(slot)+'"'+extraAttrs+'>'+
+      if(!meals.length){
+        return '<button type="button" class="planner-slot" data-action="open-planner-modal" data-date="'+key+'" data-slot="'+h(slot)+'">'+
+          '<div class="slot-label">'+emoji+' '+slot+'</div>'+
+          '<div class="slot-add-btn">＋ Add</div>'+
+        '</button>';
+      }
+      const rows=meals.map(meal=>{
+        // Show a green dot if all ingredients are in kitchen
+        const cbEntry=state.cookbook.find(r=>r.title.toLowerCase()===meal.toLowerCase());
+        const avail=cbEntry?recipeAvailability(cbEntry):null;
+        const dot=avail&&avail.missing===0?'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;flex-shrink:0;"></span>':'';
+        return '<button type="button" class="slot-meal-row" data-action="open-cooking-mode" data-date="'+key+'" data-slot="'+h(slot)+'" data-meal="'+h(meal)+'">'+dot+h(meal)+'</button>';
+      }).join('');
+      return '<div class="planner-slot planner-slot-filled">'+
         '<div class="slot-label">'+emoji+' '+slot+'</div>'+
-        (meal
-          ?'<div class="slot-meal" style="display:flex;align-items:baseline;gap:4px;">'+dot+h(meal)+'</div>'
-          :'<div class="slot-add-btn">＋ Add</div>')+
-      '</button>';
+        rows+
+        '<button type="button" class="slot-add-more-btn" data-action="open-planner-modal" data-date="'+key+'" data-slot="'+h(slot)+'">＋ Add another</button>'+
+      '</div>';
     }).join('');
     return '<div class="planner-day">'+
       '<div class="planner-day-header">'+
@@ -2346,7 +2400,7 @@ function renderPlanner(){
   }).join('');
 
   // Recipe Browser section
-  const mealPills=['All','Breakfast','Lunch','Dinner','Snack'].map(m=>
+  const mealPills=['All','Breakfast','Lunch','Dinner','Snack','Dessert'].map(m=>
     '<button class="pill-btn '+(ui.browserMealFilter===m?'active':'')+'" data-action="set-browser-meal" data-val="'+m+'">'+m+'</button>').join('');
 
   const browser='<div class="recipe-browser-section">'+
@@ -2808,24 +2862,24 @@ document.addEventListener('click',e=>{
     case 'assign-modal-prev-week': ui.assignModal.weekOffset=(ui.assignModal.weekOffset||0)-1; renderModal(); break;
     case 'assign-modal-next-week': ui.assignModal.weekOffset=(ui.assignModal.weekOffset||0)+1; renderModal(); break;
     case 'assign-modal-pick-slot':
-      setPlannerMeal(a.date,a.slot,ui.assignModal.title);
+      addPlannerMeal(a.date,a.slot,ui.assignModal.title);
       ui.assignModal=null;
       renderModal();
       break;
     // planner
     case 'open-planner-modal':
-      ui.plannerModal={date:a.date,slot:a.slot};
+      ui.plannerModal={date:a.date,slot:a.slot,mode:'add'};
       ui.plannerSearch='';ui.plannerShowCreate=false;ui.plannerShowLimit=40;
-      ui.plannerMealFilter= a.slot==='Breakfast'?'Breakfast':a.slot==='Lunch'?'Lunch':a.slot==='Dinner'?'Dinner':'All';
+      ui.plannerMealFilter= a.slot==='Breakfast'?'Breakfast':a.slot==='Lunch'?'Lunch':a.slot==='Dinner'?'Dinner':a.slot==='Snack'?'Snack':a.slot==='Dessert'?'Dessert':'All';
       renderModal();break;
     case 'planner-filter-meal': ui.plannerMealFilter=a.val; ui.plannerShowLimit=40; partialUpdate('planner-modal-body',renderPlannerModalBody()); break;
     case 'planner-show-more': ui.plannerShowLimit=(ui.plannerShowLimit||40)+40; partialUpdate('planner-modal-body',renderPlannerModalBody()); break;
     case 'close-modal': ui.plannerModal=null;ui.plannerSearch='';ui.plannerShowCreate=false;renderModal();break;
     case 'planner-pick-recipe':
-      setPlannerMeal(a.date,a.slot,a.title);break;
+      commitPlannerMeal(a.date,a.slot,a.title);break;
     case 'planner-manual-add':{
       const title=ui.plannerSearch.trim();
-      if(title) setPlannerMeal(a.date,a.slot,title);
+      if(title) commitPlannerMeal(a.date,a.slot,title);
       else{ui.plannerModal=null;renderModal();}
     }break;
     case 'planner-toggle-create':
@@ -2837,7 +2891,7 @@ document.addEventListener('click',e=>{
       // legacy path kept for safety
       const custInp=document.getElementById('planner-custom-input');
       const title=(custInp?.value||ui.plannerSearch||'').trim();
-      if(title) setPlannerMeal(a.date,a.slot,title);
+      if(title) commitPlannerMeal(a.date,a.slot,title);
       else{ui.plannerModal=null;renderModal();}
     }break;
     case 'confirm-planner-add-recipe':{
@@ -2859,9 +2913,11 @@ document.addEventListener('click',e=>{
         dateAdded:new Date().toISOString()
       };
       saveRecipe(recipe);
-      setPlannerMeal(a.date,a.slot,title);
+      commitPlannerMeal(a.date,a.slot,title);
     }break;
-    case 'clear-planner-meal': clearPlannerMeal(a.date,a.slot);break;
+    case 'clear-planner-meal':
+      if(confirm('Remove "'+a.title+'" from '+a.slot+'?')) removePlannerMeal(a.date,a.slot,a.title);
+      break;
     case 'planner-prev': ui.plannerWeekOffset--;render();break;
     case 'planner-next': ui.plannerWeekOffset++;render();break;
     case 'add-week-missing': addWeekMissingToGrocery();break;
@@ -2882,14 +2938,15 @@ document.addEventListener('click',e=>{
         renderCookingModal();render();
       }break;
     case 'add-recipe-for-meal':
-      // Open the planner recipe picker with create form pre-filled
+      // Open the planner recipe picker with create form pre-filled — this edits the
+      // already-planned title in place rather than adding a second entry for it
       ui.cookingModal=null;renderCookingModal();
-      ui.plannerModal={date:a.date,slot:a.slot};
+      ui.plannerModal={date:a.date,slot:a.slot,mode:'replace',oldTitle:a.title};
       ui.plannerSearch=a.title||'';ui.plannerShowCreate=true;ui.plannerShowLimit=40;
       renderModal();break;
     case 'change-meal':
       ui.cookingModal=null;renderCookingModal();
-      ui.plannerModal={date:a.date,slot:a.slot};
+      ui.plannerModal={date:a.date,slot:a.slot,mode:'replace',oldTitle:a.meal};
       ui.plannerSearch='';ui.plannerShowCreate=false;ui.plannerShowLimit=40;
       ui.plannerMealFilter=a.slot==='Breakfast'?'Breakfast':a.slot==='Lunch'?'Lunch':a.slot==='Dinner'?'Dinner':'All';
       renderModal();break;
