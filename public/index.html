@@ -227,6 +227,10 @@ input::placeholder,textarea::placeholder{color:var(--ink-soft);}
 .color-swatch{width:24px;height:24px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .1s;}
 .color-swatch:hover{transform:scale(1.15);}
 .color-swatch.selected{border-color:var(--ink);}
+.emoji-picker{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 10px;max-height:120px;overflow-y:auto;padding:8px;background:var(--bg);border-radius:8px;border:1px solid var(--border);}
+.emoji-pick-btn{width:30px;height:30px;font-size:17px;line-height:1;background:none;border:2px solid transparent;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .1s,border-color .1s;}
+.emoji-pick-btn:hover{background:#fff;}
+.emoji-pick-btn.selected{border-color:var(--green);background:#fff;}
 
 /* STATUS */
 .status-card{padding:40px 20px;text-align:center;color:var(--ink-soft);font-size:14px;font-weight:700;border:1.5px dashed var(--border);border-radius:var(--r);background:var(--card);}
@@ -353,6 +357,51 @@ const CAT_KEYWORDS = {
   'Pantry & Dry Goods':['sugar','baking powder','baking soda','yeast','lentil','beans','chickpea','peanut','almond','cashew','walnut','honey','syrup','olive oil','vegetable oil','vinegar','breadcrumbs','panko'],
   'Frozen':['frozen','ice cream','popsicle','frost']
 };
+
+// Specific-food emoji, checked longest-keyword-first so e.g. "green onion" wins over "onion".
+// A miss just falls back to the category's own emoji — this only ever narrows, never breaks.
+const ITEM_EMOJI_KEYWORDS = [
+  ['banana','🍌'],['apple','🍎'],['orange','🍊'],['lemon','🍋'],['lime','🍋'],
+  ['grape','🍇'],['strawberry','🍓'],['blueberry','🫐'],['watermelon','🍉'],
+  ['cantaloupe','🍈'],['melon','🍈'],['mango','🥭'],['pear','🍐'],['peach','🍑'],
+  ['avocado','🥑'],['pineapple','🍍'],['kiwi','🥝'],['coconut','🥥'],['cherry','🍒'],['cherries','🍒'],
+  ['sweet potato','🍠'],['tomato','🍅'],['potato','🥔'],['green onion','🧅'],['scallion','🧅'],['onion','🧅'],
+  ['garlic','🧄'],['carrot','🥕'],['broccoli','🥦'],['cucumber','🥒'],['bell pepper','🫑'],
+  ['hot pepper','🌶'],['chili','🌶'],['spinach','🥬'],['lettuce','🥬'],['kale','🥬'],['cabbage','🥬'],
+  ['mushroom','🍄'],['corn','🌽'],['eggplant','🍆'],
+  ['milk','🥛'],['cheese','🧀'],['butter','🧈'],['egg','🥚'],['yogurt','🥣'],['yoghurt','🥣'],
+  ['chicken','🍗'],['turkey','🦃'],['bacon','🥓'],['steak','🥩'],['ground beef','🥩'],['beef','🥩'],['pork','🥩'],
+  ['ham','🍖'],['salmon','🐟'],['tuna','🐟'],['fish','🐟'],['shrimp','🍤'],['prawn','🍤'],
+  ['crab','🦀'],['lobster','🦞'],
+  ['baguette','🥖'],['bagel','🥯'],['croissant','🥐'],['tortilla','🫓'],
+  ['pita','🫓'],['naan','🫓'],['pretzel','🥨'],['bread','🍞'],['spaghetti','🍝'],['pasta','🍝'],['noodle','🍜'],
+  ['ramen','🍜'],['rice','🍚'],['cereal','🥣'],['pancake','🥞'],['waffle','🧇'],
+  ['honey','🍯'],['peanut','🥜'],['almond','🥜'],['cashew','🥜'],['walnut','🥜'],
+  ['popcorn','🍿'],['cookie','🍪'],['chocolate','🍫'],['candy','🍬'],['donut','🍩'],['doughnut','🍩'],
+  ['ice cream','🍦'],['cupcake','🧁'],['cake','🎂'],
+  ['coffee','☕'],['tea','🍵'],['juice','🧃'],['soda','🥤'],['beer','🍺'],['wine','🍷'],
+  ['pickle','🥒'],['olive','🫒'],['salt','🧂'],['pizza','🍕'],['taco','🌮'],['burrito','🌯'],
+  ['sushi','🍣'],['soup','🍲'],['salad','🥗']
+].sort((a,b)=>b[0].length-a[0].length);
+function guessItemEmoji(name){
+  const n=(name||'').toLowerCase().trim();
+  if(!n) return null;
+  for(const[kw,emoji] of ITEM_EMOJI_KEYWORDS){ if(n.includes(kw)) return emoji; }
+  return null;
+}
+
+// Quick-pick options for category icons — click instead of hunting for a character to type/paste.
+const EMOJI_PALETTE = [
+  '🥦','🥕','🥬','🥒','🍅','🥔','🧅','🧄','🌽','🫑','🥑','🍆','🍄','🌶',
+  '🍎','🍌','🍊','🍋','🍇','🍓','🫐','🍉','🍈','🥭','🍐','🍑','🍍','🥝','🥥','🍒',
+  '🥛','🧀','🧈','🥚','🥣',
+  '🍗','🦃','🥩','🥓','🍖','🐟','🍤','🦀','🦞',
+  '🍞','🥖','🥯','🥐','🫓','🥨','🍝','🍜','🍚','🥞','🧇',
+  '🫙','🥫','🫒','🧂','🍯','🥜',
+  '🧊','🍦','🍿','🍪','🍫','🍬','🍩','🧁','🎂',
+  '🧃','☕','🍵','🥤','🍺','🍷',
+  '🍕','🌮','🌯','🍣','🍲','🥗','🍽','📦'
+];
 
 // ─── STORAGE / API ───────────────────────────────────────────────────────
 let authToken = localStorage.getItem('pp-token');
@@ -566,7 +615,8 @@ function addOrUpdateItem(fd){
   const item={id:ui.editingItemId||uid(),name,
     category:fd.get('category'),location:fd.get('location'),
     quantity:parseFloat(fd.get('quantity'))||0,unit:(fd.get('unit')||'').trim(),
-    threshold:parseFloat(fd.get('threshold'))||0,expiresOn:fd.get('expiresOn')||''};
+    threshold:parseFloat(fd.get('threshold'))||0,expiresOn:fd.get('expiresOn')||'',
+    emoji:(fd.get('emoji')||'').trim()||null};
   if(ui.editingItemId){const i=state.inventory.findIndex(x=>x.id===ui.editingItemId);if(i>-1)state.inventory[i]=item;}
   else state.inventory.push(item);
   ui.showAddItem=false;ui.editingItemId=null;saveInv();render();
@@ -1613,8 +1663,9 @@ function renderItemRow(item,cat){
   const low=isLow(item);
   const exp=item.expiresOn?expiryLabel(item.expiresOn):'';
   const metaParts=[h(item.location)]; if(exp) metaParts.push(exp);
+  const emoji=item.emoji||guessItemEmoji(item.name)||cat.emoji;
   return '<div class="item-row" style="border-left-color:'+cat.color+';">'+
-    '<span class="item-emoji">'+cat.emoji+'</span>'+
+    '<span class="item-emoji">'+emoji+'</span>'+
     '<div class="item-main">'+
       '<span class="item-name">'+h(item.name)+(low?'<span class="low-badge">LOW</span>':'')+'</span>'+
       '<div class="item-meta">'+metaParts.join(' · ')+'</div>'+
@@ -1643,7 +1694,8 @@ function renderItemFormModal(){
         '<form class="form-card" data-form="add-item" style="padding:0;border:none;">'+
           '<div class="form-grid">'+
             '<div class="field"><label>Name</label><input name="name" required value="'+h(v.name)+'" placeholder="e.g. Greek yogurt" '+(editing?'':'data-live="item-name-auto"')+'></div>'+
-            '<div class="field"><label>Category</label><select name="category" id="item-cat-select" '+(editing?'data-touched="1"':'')+'>'+catOptions+'</select></div>'+
+            '<div class="field" style="max-width:90px;"><label>Emoji</label><input name="emoji" id="item-emoji-input" value="'+h(v.emoji||'')+'" placeholder="'+(guessItemEmoji(v.name)||getCat(v.category).emoji)+'" style="font-size:18px;text-align:center;"></div>'+
+            '<div class="field"><label>Category</label><select name="category" id="item-cat-select" data-change="item-cat" '+(editing?'data-touched="1"':'')+'>'+catOptions+'</select></div>'+
             '<div class="field"><label>Location</label><select name="location">'+locOptions+'</select></div>'+
             '<div class="field"><label>Quantity</label><input type="number" name="quantity" min="0" step="any" value="'+h(v.quantity)+'"></div>'+
             '<div class="field"><label>Unit</label><input name="unit" list="unit-dl" value="'+h(v.unit)+'" placeholder="pcs, g…"></div>'+
@@ -2510,6 +2562,7 @@ function renderSettingsCats(){
     const editing=ui.editCatId===cat.id;
     const count=state.inventory.filter(i=>i.category===cat.name).length;
     const swatches=SWATCH_COLORS.map(sc=>'<button type="button" class="color-swatch '+(ui.editCatColor===sc?'selected':'')+'" aria-label="'+sc+'" style="background:'+sc+';" data-action="set-edit-cat-color" data-val="'+sc+'"></button>').join('');
+    const emojiPicks=EMOJI_PALETTE.map(em=>'<button type="button" class="emoji-pick-btn '+(ui.editCatEmoji===em?'selected':'')+'" data-action="pick-edit-cat-emoji" data-emoji="'+em+'">'+em+'</button>').join('');
     return '<div class="settings-row" style="flex-direction:column;align-items:stretch;">'+
       '<div style="display:flex;align-items:center;gap:10px;">'+
         '<span class="settings-dot" style="background:'+cat.color+';"></span>'+
@@ -2525,6 +2578,7 @@ function renderSettingsCats(){
             '<div class="field"><label>Name</label><input id="edit-cat-name" value="'+h(ui.editCatName)+'"></div>'+
             '<div class="field"><label>Emoji</label><input id="edit-cat-emoji" value="'+h(ui.editCatEmoji)+'" style="font-size:18px;"></div>'+
           '</div>'+
+          '<div class="emoji-picker">'+emojiPicks+'</div>'+
           '<div class="color-swatches">'+swatches+'</div>'+
           '<div class="form-actions">'+
             '<button class="btn btn-primary" data-action="save-edit-cat">Save</button>'+
@@ -2540,6 +2594,7 @@ function renderSettingsCats(){
       '<div class="field"><label>Name</label><input id="new-cat-name" value="'+h(ui.newCatName)+'" placeholder="e.g. Condiments"></div>'+
       '<div class="field"><label>Emoji</label><input id="new-cat-emoji" value="'+h(ui.newCatEmoji)+'" style="font-size:18px;"></div>'+
     '</div>'+
+    '<div class="emoji-picker">'+EMOJI_PALETTE.map(em=>'<button type="button" class="emoji-pick-btn '+(ui.newCatEmoji===em?'selected':'')+'" data-action="pick-new-cat-emoji" data-emoji="'+em+'">'+em+'</button>').join('')+'</div>'+
     '<div class="color-swatches">'+SWATCH_COLORS.map(sc=>'<button type="button" class="color-swatch '+(ui.newCatColor===sc?'selected':'')+'" aria-label="'+sc+'" style="background:'+sc+';" data-action="set-new-cat-color" data-val="'+sc+'"></button>').join('')+'</div>'+
     '<div class="form-actions">'+
       '<button class="btn btn-primary" data-action="add-category">Add category</button>'+
@@ -3019,6 +3074,8 @@ document.addEventListener('click',e=>{
     }break;
     case 'set-edit-cat-color': ui.editCatColor=a.val;render();break;
     case 'set-new-cat-color': ui.newCatColor=a.val;render();break;
+    case 'pick-edit-cat-emoji': ui.editCatEmoji=a.emoji;render();break;
+    case 'pick-new-cat-emoji': ui.newCatEmoji=a.emoji;render();break;
     case 'open-add-cat': ui.showAddCat=true;render();break;
     case 'cancel-add-cat': ui.showAddCat=false;render();break;
     case 'add-category':{
@@ -3070,6 +3127,8 @@ document.addEventListener('input',e=>{
   else if(live==='item-name-auto'){
     const sel=document.getElementById('item-cat-select');
     if(sel&&!sel.dataset.touched){sel.value=guessCategory(el.value);}
+    const emojiInput=document.getElementById('item-emoji-input');
+    if(emojiInput){emojiInput.placeholder=guessItemEmoji(el.value)||getCat(sel?sel.value:'Other').emoji;}
   }
   else if(live==='new-store'){ui.newStore=el.value;}
   else if(live==='new-cuisine'){ui.newCuisine=el.value;}
