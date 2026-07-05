@@ -1337,8 +1337,9 @@ function renderModal(){
   if(ui.plannerModal){ root.innerHTML=renderChooseRecipeModal(); }
   else if(ui.recipeViewModal){ root.innerHTML=renderRecipeViewModal(); }
   else if(ui.assignModal){ root.innerHTML=renderAssignModal(); }
+  else if(ui.showAddItem){ root.innerHTML=renderItemFormModal(); }
   else { root.innerHTML=''; return; }
-  setTimeout(()=>{const el=document.getElementById('planner-search-input');if(el)el.focus();},0);
+  setTimeout(()=>{const el=document.getElementById('planner-search-input')||document.querySelector('#modal-root input[name="name"]');if(el)el.focus();},0);
 }
 
 function renderChooseRecipeModal(){
@@ -1589,9 +1590,7 @@ function renderKitchenShelves(){
   }).join('');
 }
 function renderKitchen(){
-  const addBtn=ui.showAddItem
-    ?'<button class="btn btn-secondary" data-action="cancel-add-item">Cancel</button>'
-    :'<button class="btn btn-primary" data-action="open-add-item">+ Add item</button>';
+  const addBtn='<button class="btn btn-primary" data-action="open-add-item">+ Add item</button>';
   const isAllActive = ui.kitchenLoc==='All' && ui.kitchenExpiry==='all';
   const allBtn='<button class="pill-btn '+(isAllActive?'active':'')+'" data-action="reset-kitchen-filters">All</button>';
   const locBtns=LOCATIONS.map(l=>
@@ -1607,7 +1606,6 @@ function renderKitchen(){
   '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">'+
     '<div class="pill-filters">'+allBtn+locBtns+expiryBtns+'</div>'+
   '</div>'+
-  (ui.showAddItem?renderItemForm():'')+
   '<div id="kitchen-shelves">'+renderKitchenShelves()+'</div>';
 }
 
@@ -1632,27 +1630,35 @@ function renderItemRow(item,cat){
   '</div>';
 }
 
-function renderItemForm(){
+function renderItemFormModal(){
   const editing=ui.editingItemId?state.inventory.find(i=>i.id===ui.editingItemId):null;
   const v=editing||{name:'',category:state.settings.categories[0]?.name||'Produce',location:'Fridge',quantity:1,unit:'',threshold:1,expiresOn:''};
   const catOptions=state.settings.categories.map(c=>'<option value="'+h(c.name)+'" '+(c.name===v.category?'selected':'')+'>'+c.emoji+' '+h(c.name)+'</option>').join('');
   const locOptions=LOCATIONS.map(l=>'<option value="'+l+'" '+(l===v.location?'selected':'')+'>'+l+'</option>').join('');
-  return '<form class="form-card" data-form="add-item">'+
-    '<div class="form-grid">'+
-      '<div class="field"><label>Name</label><input name="name" required value="'+h(v.name)+'" placeholder="e.g. Greek yogurt" '+(editing?'':'data-live="item-name-auto"')+'></div>'+
-      '<div class="field"><label>Category</label><select name="category" id="item-cat-select" '+(editing?'data-touched="1"':'')+'>'+catOptions+'</select></div>'+
-      '<div class="field"><label>Location</label><select name="location">'+locOptions+'</select></div>'+
-      '<div class="field"><label>Quantity</label><input type="number" name="quantity" min="0" step="any" value="'+h(v.quantity)+'"></div>'+
-      '<div class="field"><label>Unit</label><input name="unit" list="unit-dl" value="'+h(v.unit)+'" placeholder="pcs, g…"></div>'+
-      '<div class="field"><label>Low stock at</label><input type="number" name="threshold" min="0" step="any" value="'+h(v.threshold)+'"></div>'+
-      '<div class="field"><label>Expires on</label><input type="date" name="expiresOn" value="'+h(v.expiresOn)+'"></div>'+
-    '</div>'+
-    '<datalist id="unit-dl">'+UNIT_LIST.map(u=>'<option value="'+u+'">').join('')+'</datalist>'+
-    '<div class="form-actions">'+
-      '<button type="submit" class="btn btn-primary">'+(editing?'Save changes':'Add to kitchen')+'</button>'+
-      '<button type="button" class="btn btn-secondary" data-action="cancel-add-item">Cancel</button>'+
-    '</div>'+
-  '</form>';
+  return (
+    '<div class="modal-overlay" id="pp-modal-overlay">'+
+      '<div class="modal-sheet">'+
+        '<button class="modal-close" data-action="cancel-add-item">×</button>'+
+        '<div class="modal-title" style="margin-bottom:16px;">'+(editing?'Edit item':'Add item')+'</div>'+
+        '<form class="form-card" data-form="add-item" style="padding:0;border:none;">'+
+          '<div class="form-grid">'+
+            '<div class="field"><label>Name</label><input name="name" required value="'+h(v.name)+'" placeholder="e.g. Greek yogurt" '+(editing?'':'data-live="item-name-auto"')+'></div>'+
+            '<div class="field"><label>Category</label><select name="category" id="item-cat-select" '+(editing?'data-touched="1"':'')+'>'+catOptions+'</select></div>'+
+            '<div class="field"><label>Location</label><select name="location">'+locOptions+'</select></div>'+
+            '<div class="field"><label>Quantity</label><input type="number" name="quantity" min="0" step="any" value="'+h(v.quantity)+'"></div>'+
+            '<div class="field"><label>Unit</label><input name="unit" list="unit-dl" value="'+h(v.unit)+'" placeholder="pcs, g…"></div>'+
+            '<div class="field"><label>Low stock at</label><input type="number" name="threshold" min="0" step="any" value="'+h(v.threshold)+'"></div>'+
+            '<div class="field"><label>Expires on</label><input type="date" name="expiresOn" value="'+h(v.expiresOn)+'"></div>'+
+          '</div>'+
+          '<datalist id="unit-dl">'+UNIT_LIST.map(u=>'<option value="'+u+'">').join('')+'</datalist>'+
+          '<div class="form-actions">'+
+            '<button type="submit" class="btn btn-primary">'+(editing?'Save changes':'Add to kitchen')+'</button>'+
+            '<button type="button" class="btn btn-secondary" data-action="cancel-add-item">Cancel</button>'+
+          '</div>'+
+        '</form>'+
+      '</div>'+
+    '</div>'
+  );
 }
 
 // ─── RENDER: GROCERY ──────────────────────────────────────────────────────
@@ -2830,6 +2836,7 @@ document.addEventListener('click',e=>{
   if(e.target.id==='pp-modal-overlay'){
     ui.plannerModal=null;ui.plannerSearch='';ui.plannerShowCreate=false;
     ui.recipeViewModal=null;ui.assignModal=null;
+    ui.showAddItem=false;ui.editingItemId=null;
     renderModal();return;
   }
   if(e.target.id==='pp-cooking-overlay'){
