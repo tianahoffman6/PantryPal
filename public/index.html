@@ -430,6 +430,7 @@ function signOut(){
   ui.creditsLoaded=false;ui.credits=null;
   ui.billingLoaded=false;ui.billingHistory=[];
   ui.adminLoaded=false;ui.adminFamilies=[];
+  ui.auditLoaded=false;ui.auditLog=[];ui.showAuditLog=false;
   ui.inviteCode='';ui.newInviteCode='';
   ui.accountMsg='';ui.accountErr='';ui.emailMsg='';ui.emailErr='';
   renderLogin();
@@ -447,7 +448,7 @@ function persistState(key,value){
 }
 
 function defaultSettings(){
-  return {householdName:'Tiana & Baltej',members:['T','B'],categories:DEFAULT_CATEGORIES.map(c=>({...c})),stores:[],cuisines:['Italian','Mexican','Indian','Chinese','Japanese','Thai','Korean','Mediterranean','French','American','Greek','Other']};
+  return {householdName:'My Household',members:['🏠'],categories:DEFAULT_CATEGORIES.map(c=>({...c})),stores:[],cuisines:['Italian','Mexican','Indian','Chinese','Japanese','Thai','Korean','Mediterranean','French','American','Greek','Other']};
 }
 
 let state={
@@ -467,7 +468,7 @@ async function loadState(){
   if(!state.settings.categories) state.settings.categories = DEFAULT_CATEGORIES.map(c=>({...c}));
   if(!state.settings.stores)     state.settings.stores = [];
   if(!state.settings.cuisines)   state.settings.cuisines = defaultSettings().cuisines;
-  if(!state.settings.members)    state.settings.members = ['T','B'];
+  if(!state.settings.members)    state.settings.members = defaultSettings().members;
   // pre-seed cookbook only for a brand-new account (no cookbook row saved yet) —
   // never on an empty array, which could mean the user intentionally cleared it
   if(isNewAccount){
@@ -560,6 +561,7 @@ let ui={
   inviteCode:'', inviteExpires:'', invitingLoading:false,
   credits:null, creditsLoaded:false, checkoutLoading:false, checkoutMessage:'',
   familyMembers:[], membersLoaded:false, isOwnerFamily:false, meLoaded:false,
+  auditLog:[], auditLoaded:false, showAuditLog:false,
   myUserId:null, myRole:'member', myEmail:'',
   adminFamilies:[], adminLoaded:false, newInviteCode:'', newInviteExpires:'', newInviteLoading:false,
   accountMsg:'', accountErr:'', emailMsg:'', emailErr:'',
@@ -1189,8 +1191,10 @@ function renderLogin(){
         (signup?
           '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:18px;">Sign up with your invite code</p>'+
           '<form data-form="signup">'+
-            '<div class="field" style="margin-bottom:12px;"><label>Invite code</label><input type="text" id="signup-invite" required></div>'+
-            '<div class="field" style="margin-bottom:12px;"><label>Household name</label><input type="text" id="signup-family" placeholder="e.g. The Smiths"></div>'+
+            '<div class="field" style="margin-bottom:12px;"><label>Invite code</label><input type="text" id="signup-invite" required data-change="signup-invite-check">'+
+              '<div id="invite-check-status" style="font-size:12px;font-weight:700;margin-top:5px;"></div>'+
+            '</div>'+
+            '<div class="field" id="signup-family-field" style="margin-bottom:12px;"><label>Household name</label><input type="text" id="signup-family" placeholder="e.g. The Smiths"></div>'+
             '<div class="field" style="margin-bottom:12px;"><label>Email</label><input type="email" id="signup-email" autocomplete="email" required></div>'+
             '<div class="field" style="margin-bottom:12px;"><label>Password</label><input type="password" id="signup-password" autocomplete="new-password" required></div>'+
             (ui.signupError?'<p style="color:var(--orange);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.signupError)+'</p>':'')+
@@ -1225,6 +1229,35 @@ async function submitLogin(){
   }catch(e){
     ui.loginError='Could not connect — try again.';
     renderLogin();
+  }
+}
+
+async function checkSignupInvite(code){
+  const statusEl=document.getElementById('invite-check-status');
+  const famField=document.getElementById('signup-family-field');
+  if(!statusEl||!famField) return;
+  if(!code){ statusEl.textContent=''; famField.style.display=''; return; }
+  statusEl.textContent='Checking…'; statusEl.style.color='var(--ink-soft)';
+  let res=null;
+  try{ const r=await fetch('/api/invites/'+encodeURIComponent(code)); res=r.ok?await r.json():null; }catch(e){ res=null; }
+  // Re-fetch the elements in case the user switched auth modes while this was in flight
+  const statusEl2=document.getElementById('invite-check-status');
+  const famField2=document.getElementById('signup-family-field');
+  if(!statusEl2||!famField2) return;
+  if(!res||!res.valid){
+    statusEl2.textContent='⚠ Invalid or expired code — double-check with whoever sent it.';
+    statusEl2.style.color='var(--orange)';
+    famField2.style.display='';
+    return;
+  }
+  if(res.newFamily){
+    statusEl2.textContent='✓ This code starts a brand-new household — you\'ll be its owner.';
+    statusEl2.style.color='var(--green)';
+    famField2.style.display='';
+  }else{
+    statusEl2.textContent='✓ This code joins an existing household\'s shared data.';
+    statusEl2.style.color='var(--green)';
+    famField2.style.display='none';
   }
 }
 
@@ -1549,7 +1582,7 @@ function renderAssignModal(){
 
 function renderHeader(){
   const settings=state.settings;
-  const avatars=(settings.members||['T','B']).map((m,i)=>
+  const avatars=(settings.members||defaultSettings().members).map((m,i)=>
     '<div class="pp-avatar" style="background:'+avatarColor(m)+'">'+h(m)+'</div>').join('');
   return '<header class="pp-header">'+
     '<div class="pp-logo">pantry<span>pal</span></div>'+
@@ -2647,18 +2680,39 @@ function renderSettingsFamily(){
   if(!ui.creditsLoaded) loadCredits();
   if(!ui.membersLoaded) loadMembers();
   if(!ui.billingLoaded) loadBillingHistory();
+  if(ui.myRole==='owner'&&!ui.auditLoaded) loadAuditLog();
   const creditsRow = ui.credits===null ? 'Unlimited' : (ui.credits+' recipe generation'+(ui.credits===1?'':'s')+' remaining');
   const iAmOwner = ui.myRole==='owner';
   const membersList = ui.familyMembers.map(m=>{
     const isMe = m.id===ui.myUserId;
     let action='';
-    if(isMe) action='<button class="btn-icon" data-action="leave-household" style="color:var(--orange);">Leave</button>';
+    if(isMe) action=
+      '<button class="btn-icon" data-action="self-split-off" style="margin-right:6px;">↗ Start my own household</button>'+
+      '<button class="btn-icon" data-action="leave-household" style="color:var(--orange);">Leave</button>';
     else if(iAmOwner) action=
       '<button class="btn-icon" data-action="split-off-member" data-id="'+m.id+'" data-email="'+h(m.email)+'" style="margin-right:6px;">↗ Move to new household</button>'+
       '<button class="btn-icon" data-action="remove-member" data-id="'+m.id+'" data-email="'+h(m.email)+'" style="color:var(--orange);">✕ Remove</button>';
     return '<div class="settings-row"><span style="font-weight:700;">'+h(m.email)+(isMe?' <span style="color:var(--ink-soft);font-weight:600;">(you)</span>':'')+'</span>'+
       '<span style="display:flex;align-items:center;gap:8px;"><span style="color:var(--ink-soft);font-size:12px;">'+h(m.role)+' · joined '+h(new Date(m.created_at).toLocaleDateString())+'</span>'+action+'</span></div>';
   }).join('');
+  const AUDIT_LABELS={
+    remove_member:'removed', split_off_member:'moved', self_split_off:'started their own household, leaving',
+    create_invite:'generated an invite code', create_new_family_invite:'generated a new-household invite code'
+  };
+  const auditRows=(ui.auditLog||[]).map(e=>{
+    const label=AUDIT_LABELS[e.action]||e.action;
+    const target=e.target_email?' <strong>'+h(e.target_email)+'</strong>':'';
+    return '<div class="settings-row"><span style="font-size:13px;">'+h(e.actor_email)+' '+label+target+'</span>'+
+      '<span style="color:var(--ink-soft);font-size:12px;">'+h(new Date(e.created_at).toLocaleString())+'</span></div>';
+  }).join('');
+  const auditSection=iAmOwner?
+    '<div class="form-card" style="margin-bottom:16px;">'+
+      '<div class="field">'+
+        '<button type="button" class="btn-ghost" data-action="toggle-audit-log" style="padding:0;font-weight:800;">'+
+          (ui.showAuditLog?'▾':'▸')+' Recent activity</button>'+
+        (ui.showAuditLog?'<div style="margin-top:10px;">'+(auditRows||'<p style="color:var(--ink-soft);font-size:13px;">Nothing yet.</p>')+'</div>':'')+
+      '</div>'+
+    '</div>':'';
   const packBtns = ui.credits!==null ? [
     {key:'small',label:'50 — $5'},
     {key:'medium',label:'150 — $12'},
@@ -2683,7 +2737,7 @@ function renderSettingsFamily(){
           '<p style="color:var(--ink-soft);font-size:12px;margin-top:6px;">Expires '+h(new Date(ui.inviteExpires).toLocaleDateString())+'. Share this code — they\'ll enter it on the sign-up screen.</p></div>':'')+
       '</div>'+
     '</div>'+
-    '<div class="form-card">'+
+    '<div class="form-card" style="margin-bottom:16px;">'+
       '<div class="field">'+
         '<label>AI recipe generation credits</label>'+
         '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">'+h(creditsRow)+'</p>'+
@@ -2692,7 +2746,8 @@ function renderSettingsFamily(){
         (ui.checkoutMessage?'<p style="color:var(--green);font-size:13px;font-weight:700;margin-top:10px;">'+h(ui.checkoutMessage)+'</p>':'')+
         (history?'<div style="margin-top:16px;"><label>Purchase history</label>'+history+'</div>':'')+
       '</div>'+
-    '</div>';
+    '</div>'+
+    auditSection;
 }
 
 function renderSettingsAccount(){
@@ -2786,6 +2841,13 @@ async function loadAdminFamilies(){
   render();
 }
 
+async function loadAuditLog(){
+  ui.auditLoaded=true;
+  const data=await api('GET','family/audit-log');
+  if(data) ui.auditLog=data.entries;
+  render();
+}
+
 async function generateInvite(){
   ui.invitingLoading=true;render();
   const data=await api('POST','invites',{});
@@ -2857,6 +2919,19 @@ async function leaveHousehold(){
   const data=await api('DELETE','family/members/'+ui.myUserId);
   if(data&&data.ok){ signOut(); return; }
   render();
+}
+
+async function selfSplitOff(){
+  if(!confirm('You\'ll be moved into your own brand-new household, starting completely empty. '+
+    'You keep your login, but you\'ll lose access to this household\'s shared data and need to sign back in. Continue?')) return;
+  const data=await api('POST','family/members/'+ui.myUserId+'/split-off',{});
+  if(data&&data.ok){
+    alert('You now have your own household — please sign back in to continue.');
+    signOut();
+  } else {
+    alert('Couldn\'t do that — please try again.');
+    render();
+  }
 }
 
 // ─── API: FIND RECIPES ────────────────────────────────────────────────────
@@ -3108,7 +3183,9 @@ document.addEventListener('click',e=>{
     case 'buy-credits': buyCredits(a.pack);break;
     case 'remove-member': removeMember(a.id,a.email);break;
     case 'split-off-member': splitOffMember(a.id,a.email);break;
+    case 'self-split-off': selfSplitOff();break;
     case 'leave-household': leaveHousehold();break;
+    case 'toggle-audit-log': ui.showAuditLog=!ui.showAuditLog;render();break;
     case 'open-billing': ui.tab='settings';ui.settingsSection='family';render();break;
   }
 });
@@ -3177,6 +3254,7 @@ document.addEventListener('change',e=>{
   else if(ch==='cook-time'){ui.cookFilters.maxTime=el.value;}
   else if(ch==='cook-prefer-have'){ui.cookFilters.preferHave=el.checked;}
   else if(ch==='item-cat') {const sel=document.getElementById('item-cat-select');if(sel)sel.dataset.touched='1';}
+  else if(ch==='signup-invite-check'){ checkSignupInvite(el.value.trim()); }
 });
 
 document.addEventListener('submit',e=>{

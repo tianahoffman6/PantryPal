@@ -154,6 +154,16 @@ async function initDB() {
       updated_at TIMESTAMPTZ DEFAULT now()
     );
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS admin_audit_log (
+      id SERIAL PRIMARY KEY,
+      family_id INTEGER REFERENCES families(id),
+      actor_email TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target_email TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+  `);
   await pool.query('ALTER TABLE app_state ADD COLUMN IF NOT EXISTS family_id INTEGER REFERENCES families(id)');
   await backfillOwnerFamily();
   await swapAppStatePrimaryKey();
@@ -165,6 +175,15 @@ async function initDB() {
       AND NOT EXISTS (SELECT 1 FROM users o WHERE o.family_id = u.family_id AND o.role = 'owner')
       AND u.id = (SELECT MIN(x.id) FROM users x WHERE x.family_id = u.family_id)
   `);
+}
+
+async function logAudit(familyId, actorUserId, action, targetEmail) {
+  const { rows } = await pool.query('SELECT email FROM users WHERE id = $1', [actorUserId]);
+  const actorEmail = rows[0] ? rows[0].email : 'unknown';
+  await pool.query(
+    'INSERT INTO admin_audit_log (family_id, actor_email, action, target_email) VALUES ($1, $2, $3, $4)',
+    [familyId, actorEmail, action, targetEmail || null]
+  );
 }
 
 function auth(req, res, next) {
@@ -235,6 +254,21 @@ app.post('/api/account/change-email', auth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// Public lookup so the signup screen can tell someone whether their code joins an
+// existing household or starts a brand-new one, before they commit to an account.
+// Deliberately doesn't return the household's name — just the shape of what happens.
+app.get('/api/invites/:code', async (req, res) => {
+  const { rows } = await pool.query(
+    'SELECT family_id, expires_at, redeemed_at FROM invites WHERE code = $1',
+    [req.params.code]
+  );
+  if (!rows.length) return res.json({ valid: false });
+  const inv = rows[0];
+  const valid = !inv.redeemed_at && new Date(inv.expires_at) > new Date();
+  if (!valid) return res.json({ valid: false });
+  res.json({ valid: true, newFamily: inv.family_id === null });
+});
+
 app.post('/api/signup', async (req, res) => {
   const { inviteCode, email, password, familyName } = req.body || {};
   if (!inviteCode || !email || !password) {
@@ -301,6 +335,7 @@ app.post('/api/invites', auth, async (req, res) => {
     'INSERT INTO invites (code, family_id, created_by_user_id, expires_at) VALUES ($1, $2, $3, $4)',
     [code, scopeFamilyId, req.user.userId, expiresAt]
   );
+  await logAudit(req.user.familyId, req.user.userId, newFamily ? 'create_new_family_invite' : 'create_invite', null);
   res.json({ code, expiresAt, newFamily: scopeFamilyId === null });
 });
 
@@ -315,7 +350,7 @@ app.get('/api/family/members', auth, async (req, res) => {
 app.delete('/api/family/members/:id', auth, async (req, res) => {
   const targetId = Number(req.params.id);
   if (!targetId) return res.status(400).json({ error: 'Invalid member id' });
-  const { rows: target } = await pool.query('SELECT id FROM users WHERE id = $1 AND family_id = $2', [targetId, req.user.familyId]);
+  const { rows: target } = await pool.query('SELECT id, email FROM users WHERE id = $1 AND family_id = $2', [targetId, req.user.familyId]);
   if (!target.length) return res.status(404).json({ error: 'Member not found in your household' });
 
   if (targetId !== req.user.userId) {
@@ -330,21 +365,25 @@ app.delete('/api/family/members/:id', auth, async (req, res) => {
   await pool.query('UPDATE invites SET created_by_user_id = NULL WHERE created_by_user_id = $1', [targetId]);
   await pool.query('UPDATE invites SET redeemed_by_user_id = NULL WHERE redeemed_by_user_id = $1', [targetId]);
   await pool.query('DELETE FROM users WHERE id = $1', [targetId]);
+  if (targetId !== req.user.userId) {
+    await logAudit(req.user.familyId, req.user.userId, 'remove_member', target[0].email);
+  }
   res.json({ ok: true, left: targetId === req.user.userId });
 });
 
 // Splits a member who joined the wrong household into their own brand-new one —
 // e.g. someone accidentally used a shared-family invite code instead of a new-family
-// code. Keeps their login intact; they just start fresh with no shared data.
+// code. Keeps their login intact; they just start fresh with no shared data. Anyone
+// can always split themselves off; splitting someone else off requires being owner.
 app.post('/api/family/members/:id/split-off', auth, async (req, res) => {
   const targetId = Number(req.params.id);
   if (!targetId) return res.status(400).json({ error: 'Invalid member id' });
-  if (targetId === req.user.userId) {
-    return res.status(400).json({ error: "You can't split yourself off — leave the household instead" });
-  }
-  const { rows: caller } = await pool.query('SELECT role FROM users WHERE id = $1', [req.user.userId]);
-  if (!caller[0] || caller[0].role !== 'owner') {
-    return res.status(403).json({ error: 'Only the household owner can do this' });
+  const isSelf = targetId === req.user.userId;
+  if (!isSelf) {
+    const { rows: caller } = await pool.query('SELECT role FROM users WHERE id = $1', [req.user.userId]);
+    if (!caller[0] || caller[0].role !== 'owner') {
+      return res.status(403).json({ error: 'Only the household owner can do this' });
+    }
   }
   const { rows: target } = await pool.query('SELECT id, email FROM users WHERE id = $1 AND family_id = $2', [targetId, req.user.familyId]);
   if (!target.length) return res.status(404).json({ error: 'Member not found in your household' });
@@ -359,6 +398,7 @@ app.post('/api/family/members/:id/split-off', auth, async (req, res) => {
     );
     await client.query('UPDATE users SET family_id = $1, role = $2 WHERE id = $3', [fam[0].id, 'owner', targetId]);
     await client.query('COMMIT');
+    await logAudit(req.user.familyId, req.user.userId, isSelf ? 'self_split_off' : 'split_off_member', target[0].email);
     res.json({ ok: true, newFamilyId: fam[0].id });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
@@ -376,6 +416,16 @@ app.get('/api/admin/families', auth, async (req, res) => {
     GROUP BY f.id ORDER BY f.created_at ASC
   `);
   res.json({ families: rows });
+});
+
+app.get('/api/family/audit-log', auth, async (req, res) => {
+  const { rows: caller } = await pool.query('SELECT role FROM users WHERE id = $1', [req.user.userId]);
+  if (!caller[0] || caller[0].role !== 'owner') return res.status(403).json({ error: 'Owner access only' });
+  const { rows } = await pool.query(
+    'SELECT actor_email, action, target_email, created_at FROM admin_audit_log WHERE family_id = $1 ORDER BY created_at DESC LIMIT 50',
+    [req.user.familyId]
+  );
+  res.json({ entries: rows });
 });
 
 app.get('/api/state', auth, async (req, res) => {
