@@ -433,6 +433,8 @@ function signOut(){
   ui.auditLoaded=false;ui.auditLog=[];ui.showAuditLog=false;
   ui.inviteCode='';ui.newInviteCode='';
   ui.accountMsg='';ui.accountErr='';ui.emailMsg='';ui.emailErr='';
+  ui.myFirstName='';ui.myLastName='';ui.profileMsg='';ui.resetPasswordResult=null;
+  ui.myAccentColor=null;applyAccentColor(null);
   renderLogin();
 }
 
@@ -562,6 +564,7 @@ let ui={
   credits:null, creditsLoaded:false, checkoutLoading:false, checkoutMessage:'',
   familyMembers:[], membersLoaded:false, isOwnerFamily:false, meLoaded:false,
   auditLog:[], auditLoaded:false, showAuditLog:false,
+  myFirstName:'', myLastName:'', myAccentColor:null, profileMsg:'', resetPasswordResult:null,
   myUserId:null, myRole:'member', myEmail:'',
   adminFamilies:[], adminLoaded:false, newInviteCode:'', newInviteExpires:'', newInviteLoading:false,
   accountMsg:'', accountErr:'', emailMsg:'', emailErr:'',
@@ -1294,13 +1297,14 @@ async function boot(){
     history.replaceState(null,'',window.location.pathname);
     if(checkoutParam==='success'){
       ui.tab='settings';
-      ui.settingsSection='family';
+      ui.settingsSection='household';
       ui.checkoutMessage='Payment received — updating your balance…';
       ui.creditsLoaded=false;
       ui.billingLoaded=false;
     }
   }
   if(!ui.creditsLoaded) loadCredits(); // background — powers the low-credit warning chips
+  if(!ui.meLoaded) loadMe(); // background — applies the user's personal accent color right away
   startBackgroundSync();
   render();
 }
@@ -2570,9 +2574,7 @@ function renderSettings(){
     {id:'categories',label:'Categories'},
     {id:'stores',label:'Stores'},
     {id:'cuisines',label:'Cuisines'},
-    {id:'household',label:'Household'},
-    {id:'family',label:'Family & Billing'},
-    {id:'account',label:'Account'}
+    {id:'household',label:'Household & Account'}
   ];
   if(ui.isOwnerFamily) sections.push({id:'admin',label:'Admin'});
   const nav=sections.map(s=>'<button class="pill-btn '+(ui.settingsSection===s.id?'active':'')+'" data-action="set-settings-section" data-val="'+s.id+'">'+s.label+'</button>').join('');
@@ -2582,8 +2584,6 @@ function renderSettings(){
   else if(ui.settingsSection==='stores') body=renderSettingsStores();
   else if(ui.settingsSection==='cuisines') body=renderSettingsCuisines();
   else if(ui.settingsSection==='household') body=renderSettingsHousehold();
-  else if(ui.settingsSection==='family') body=renderSettingsFamily();
-  else if(ui.settingsSection==='account') body=renderSettingsAccount();
   else if(ui.settingsSection==='admin') body=ui.isOwnerFamily?renderSettingsAdmin():renderSettingsCats();
 
   return '<div class="settings-nav">'+nav+'</div>'+body;
@@ -2668,15 +2668,6 @@ function renderSettingsCuisines(){
 }
 
 function renderSettingsHousehold(){
-  return '<div class="settings-section-title">Household</div>'+
-    '<div class="form-card">'+
-      '<div class="field" style="margin-bottom:14px;"><label>Household name</label>'+
-        '<input id="household-name-input" value="'+h(ui.householdEdit||state.settings.householdName)+'" placeholder="e.g. The Smiths" data-live="household-name"></div>'+
-      '<button class="btn btn-primary" data-action="save-household">Save</button>'+
-    '</div>';
-}
-
-function renderSettingsFamily(){
   if(!ui.creditsLoaded) loadCredits();
   if(!ui.membersLoaded) loadMembers();
   if(!ui.billingLoaded) loadBillingHistory();
@@ -2685,19 +2676,34 @@ function renderSettingsFamily(){
   const iAmOwner = ui.myRole==='owner';
   const membersList = ui.familyMembers.map(m=>{
     const isMe = m.id===ui.myUserId;
+    const fullName=[m.first_name,m.last_name].filter(Boolean).join(' ');
+    const nameLine=fullName?h(fullName):h(m.email);
+    const emailLine=fullName?'<div style="color:var(--ink-soft);font-size:12px;">'+h(m.email)+'</div>':'';
     let action='';
     if(isMe) action=
       '<button class="btn-icon" data-action="self-split-off" style="margin-right:6px;">↗ Start my own household</button>'+
       '<button class="btn-icon" data-action="leave-household" style="color:var(--orange);">Leave</button>';
     else if(iAmOwner) action=
       '<button class="btn-icon" data-action="split-off-member" data-id="'+m.id+'" data-email="'+h(m.email)+'" style="margin-right:6px;">↗ Move to new household</button>'+
+      '<button class="btn-icon" data-action="reset-member-password" data-id="'+m.id+'" data-email="'+h(m.email)+'" style="margin-right:6px;">🔑 Reset password</button>'+
       '<button class="btn-icon" data-action="remove-member" data-id="'+m.id+'" data-email="'+h(m.email)+'" style="color:var(--orange);">✕ Remove</button>';
-    return '<div class="settings-row"><span style="font-weight:700;">'+h(m.email)+(isMe?' <span style="color:var(--ink-soft);font-weight:600;">(you)</span>':'')+'</span>'+
-      '<span style="display:flex;align-items:center;gap:8px;"><span style="color:var(--ink-soft);font-size:12px;">'+h(m.role)+' · joined '+h(new Date(m.created_at).toLocaleDateString())+'</span>'+action+'</span></div>';
+    const resetBox=(ui.resetPasswordResult&&ui.resetPasswordResult.id===m.id)
+      ?'<div class="form-card" style="margin-top:8px;background:var(--bg);">'+
+          '<p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:4px;">Temporary password for '+h(m.email)+' — share it with them now, this won\'t be shown again:</p>'+
+          '<code style="font-size:15px;font-weight:800;">'+h(ui.resetPasswordResult.tempPassword)+'</code>'+
+        '</div>'
+      :'';
+    return '<div class="settings-row" style="flex-direction:column;align-items:stretch;">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
+        '<span><span style="font-weight:700;">'+nameLine+'</span>'+(isMe?' <span style="color:var(--ink-soft);font-weight:600;">(you)</span>':'')+emailLine+'</span>'+
+        '<span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="color:var(--ink-soft);font-size:12px;">'+h(m.role)+' · joined '+h(new Date(m.created_at).toLocaleDateString())+'</span>'+action+'</span>'+
+      '</div>'+resetBox+
+    '</div>';
   }).join('');
   const AUDIT_LABELS={
     remove_member:'removed', split_off_member:'moved', self_split_off:'started their own household, leaving',
-    create_invite:'generated an invite code', create_new_family_invite:'generated a new-household invite code'
+    create_invite:'generated an invite code', create_new_family_invite:'generated a new-household invite code',
+    reset_member_password:'reset the password for'
   };
   const auditRows=(ui.auditLog||[]).map(e=>{
     const label=AUDIT_LABELS[e.action]||e.action;
@@ -2722,7 +2728,13 @@ function renderSettingsFamily(){
     ? ui.billingHistory.map(p=>'<div class="settings-row"><span style="font-weight:700;">+'+p.credits+' credits</span>'+
         '<span style="color:var(--ink-soft);font-size:12px;">$'+(p.amount_cents/100).toFixed(2)+' · '+h(new Date(p.created_at).toLocaleDateString())+'</span></div>').join('')
     : '';
-  return '<div class="settings-section-title">Family & Billing</div>'+
+  const accentSwatches=SWATCH_COLORS.map(sc=>'<button type="button" class="color-swatch '+((ui.myAccentColor||'')===sc?'selected':'')+'" aria-label="'+sc+'" style="background:'+sc+';" data-action="set-accent-color" data-val="'+sc+'"></button>').join('');
+  return '<div class="settings-section-title">Household & Account</div>'+
+    '<div class="form-card" style="margin-bottom:16px;">'+
+      '<div class="field" style="margin-bottom:14px;"><label>Household name</label>'+
+        '<input id="household-name-input" value="'+h(ui.householdEdit||state.settings.householdName)+'" placeholder="e.g. The Smiths" data-live="household-name"></div>'+
+      '<button class="btn btn-primary" data-action="save-household">Save</button>'+
+    '</div>'+
     '<div class="form-card" style="margin-bottom:16px;">'+
       '<div class="field">'+
         '<label>Household members</label>'+
@@ -2747,11 +2759,26 @@ function renderSettingsFamily(){
         (history?'<div style="margin-top:16px;"><label>Purchase history</label>'+history+'</div>':'')+
       '</div>'+
     '</div>'+
-    auditSection;
-}
-
-function renderSettingsAccount(){
-  return '<div class="settings-section-title">Account</div>'+
+    auditSection+
+    '<div class="form-card" style="margin-bottom:16px;">'+
+      '<div class="field">'+
+        '<label>My profile</label>'+
+        '<div class="form-grid" style="margin:10px 0;">'+
+          '<div class="field"><label>First name</label><input id="profile-first-name" value="'+h(ui.myFirstName||'')+'" placeholder="e.g. Tiana"></div>'+
+          '<div class="field"><label>Last name</label><input id="profile-last-name" value="'+h(ui.myLastName||'')+'" placeholder="e.g. Hoffman"></div>'+
+        '</div>'+
+        (ui.profileMsg?'<p style="color:var(--green);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.profileMsg)+'</p>':'')+
+        '<button class="btn btn-primary" data-action="save-profile">Save profile</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="form-card" style="margin-bottom:16px;">'+
+      '<div class="field">'+
+        '<label>Personalization</label>'+
+        '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:8px;">Pick an accent color for your own view of PantryPal.</p>'+
+        '<div class="color-swatches">'+accentSwatches+'</div>'+
+        (ui.myAccentColor?'<button class="btn-ghost" data-action="reset-accent-color" style="font-size:12px;padding:0;margin-top:4px;">Reset to default</button>':'')+
+      '</div>'+
+    '</div>'+
     '<div class="form-card" style="margin-bottom:16px;">'+
       '<form data-form="change-password">'+
         '<div class="field" style="margin-bottom:12px;"><label>Change password</label>'+
@@ -2806,8 +2833,24 @@ async function loadMe(){
     ui.myUserId=data.userId;
     ui.myRole=data.role||'member';
     ui.myEmail=data.email||'';
+    ui.myFirstName=data.firstName||'';
+    ui.myLastName=data.lastName||'';
+    ui.myAccentColor=data.accentColor||null;
+    applyAccentColor(ui.myAccentColor);
   }
   render();
+}
+
+function applyAccentColor(color){
+  const root=document.documentElement.style;
+  if(!color){ root.removeProperty('--green'); root.removeProperty('--green-soft'); return; }
+  root.setProperty('--green',color);
+  // Lighten the accent ~80% toward white for the "soft" badge/background variant
+  const n=parseInt(color.slice(1),16);
+  const r=Math.round(((n>>16)&255)+(255-((n>>16)&255))*0.8);
+  const g=Math.round(((n>>8)&255)+(255-((n>>8)&255))*0.8);
+  const b=Math.round((n&255)+(255-(n&255))*0.8);
+  root.setProperty('--green-soft','rgb('+r+','+g+','+b+')');
 }
 
 async function loadCredits(){
@@ -2895,6 +2938,36 @@ async function changeEmail(){
   const data=await api('POST','account/change-email',{password,newEmail});
   if(data&&data.ok){ ui.emailMsg='Email updated.'; ui.myEmail=newEmail; ui.membersLoaded=false; }
   else{ ui.emailErr=lastApiStatus===401?'Password is incorrect.':(lastApiStatus===409?'That email is already in use.':'Couldn\'t update email — try again.'); }
+  render();
+}
+
+async function saveProfile(){
+  const firstName=document.getElementById('profile-first-name').value;
+  const lastName=document.getElementById('profile-last-name').value;
+  ui.profileMsg='';
+  const data=await api('POST','account/profile',{firstName,lastName});
+  if(data&&data.ok){
+    ui.myFirstName=firstName.trim();ui.myLastName=lastName.trim();ui.profileMsg='Profile updated.';
+    ui.membersLoaded=false;
+  }
+  render();
+}
+
+async function setAccentColor(color){
+  ui.myAccentColor=color; applyAccentColor(color); render();
+  await api('POST','account/accent-color',{color});
+}
+
+async function resetAccentColor(){
+  ui.myAccentColor=null; applyAccentColor(null); render();
+  await api('POST','account/accent-color',{color:null});
+}
+
+async function resetMemberPassword(id,email){
+  if(!confirm('Generate a new temporary password for '+email+'? Their current password will stop working immediately.')) return;
+  const data=await api('POST','family/members/'+id+'/reset-password',{});
+  if(data&&data.ok){ ui.resetPasswordResult={id,tempPassword:data.tempPassword}; }
+  else{ alert('Couldn\'t reset that password — please try again.'); }
   render();
 }
 
@@ -3186,7 +3259,11 @@ document.addEventListener('click',e=>{
     case 'self-split-off': selfSplitOff();break;
     case 'leave-household': leaveHousehold();break;
     case 'toggle-audit-log': ui.showAuditLog=!ui.showAuditLog;render();break;
-    case 'open-billing': ui.tab='settings';ui.settingsSection='family';render();break;
+    case 'save-profile': saveProfile();break;
+    case 'set-accent-color': setAccentColor(a.val);break;
+    case 'reset-accent-color': resetAccentColor();break;
+    case 'reset-member-password': resetMemberPassword(a.id,a.email);break;
+    case 'open-billing': ui.tab='settings';ui.settingsSection='household';render();break;
   }
 });
 

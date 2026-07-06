@@ -165,6 +165,9 @@ async function initDB() {
     );
   `);
   await pool.query('ALTER TABLE app_state ADD COLUMN IF NOT EXISTS family_id INTEGER REFERENCES families(id)');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS accent_color TEXT');
   await backfillOwnerFamily();
   await swapAppStatePrimaryKey();
   // Self-healing: families created before roles were assigned correctly get their
@@ -215,14 +218,36 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.get('/api/me', auth, async (req, res) => {
-  const { rows } = await pool.query('SELECT email, role FROM users WHERE id = $1', [req.user.userId]);
+  const { rows } = await pool.query('SELECT email, role, first_name, last_name, accent_color FROM users WHERE id = $1', [req.user.userId]);
   res.json({
     userId: req.user.userId,
     email: rows[0] ? rows[0].email : null,
     role: rows[0] ? rows[0].role : 'member',
+    firstName: rows[0] ? rows[0].first_name : null,
+    lastName: rows[0] ? rows[0].last_name : null,
+    accentColor: rows[0] ? rows[0].accent_color : null,
     familyId: req.user.familyId,
     isOwnerFamily: !!req.user.isOwnerFamily,
   });
+});
+
+app.post('/api/account/profile', auth, async (req, res) => {
+  const { firstName, lastName } = req.body || {};
+  await pool.query(
+    'UPDATE users SET first_name = $1, last_name = $2 WHERE id = $3',
+    [(firstName || '').trim() || null, (lastName || '').trim() || null, req.user.userId]
+  );
+  res.json({ ok: true });
+});
+
+const ACCENT_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+app.post('/api/account/accent-color', auth, async (req, res) => {
+  const { color } = req.body || {};
+  if (color !== null && !ACCENT_COLOR_RE.test(color || '')) {
+    return res.status(400).json({ error: 'Color must be a hex value like #3A6E32, or null to reset' });
+  }
+  await pool.query('UPDATE users SET accent_color = $1 WHERE id = $2', [color, req.user.userId]);
+  res.json({ ok: true });
 });
 
 app.post('/api/account/change-password', auth, async (req, res) => {
@@ -341,10 +366,30 @@ app.post('/api/invites', auth, async (req, res) => {
 
 app.get('/api/family/members', auth, async (req, res) => {
   const { rows } = await pool.query(
-    'SELECT id, email, role, created_at FROM users WHERE family_id = $1 ORDER BY created_at',
+    'SELECT id, email, role, first_name, last_name, created_at FROM users WHERE family_id = $1 ORDER BY created_at',
     [req.user.familyId]
   );
   res.json({ members: rows });
+});
+
+// Owner-only: generates a random temporary password for a member who's locked out.
+// Returned once in the response — there's no email/reset-link flow yet, so the owner
+// has to relay it to the member directly.
+app.post('/api/family/members/:id/reset-password', auth, async (req, res) => {
+  const targetId = Number(req.params.id);
+  if (!targetId) return res.status(400).json({ error: 'Invalid member id' });
+  const { rows: caller } = await pool.query('SELECT role FROM users WHERE id = $1', [req.user.userId]);
+  if (!caller[0] || caller[0].role !== 'owner') {
+    return res.status(403).json({ error: 'Only the household owner can do this' });
+  }
+  const { rows: target } = await pool.query('SELECT id, email FROM users WHERE id = $1 AND family_id = $2', [targetId, req.user.familyId]);
+  if (!target.length) return res.status(404).json({ error: 'Member not found in your household' });
+
+  const tempPassword = crypto.randomBytes(6).toString('base64url');
+  const hash = await bcrypt.hash(tempPassword, 10);
+  await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, targetId]);
+  await logAudit(req.user.familyId, req.user.userId, 'reset_member_password', target[0].email);
+  res.json({ ok: true, tempPassword });
 });
 
 app.delete('/api/family/members/:id', auth, async (req, res) => {
