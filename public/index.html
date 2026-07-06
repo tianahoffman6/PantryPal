@@ -231,6 +231,15 @@ input::placeholder,textarea::placeholder{color:var(--ink-soft);}
 .emoji-pick-btn{width:30px;height:30px;font-size:17px;line-height:1;background:none;border:2px solid transparent;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .1s,border-color .1s;}
 .emoji-pick-btn:hover{background:#fff;}
 .emoji-pick-btn.selected{border-color:var(--green);background:#fff;}
+.accent-swatches{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0;}
+.accent-swatch{width:36px;height:36px;border-radius:50%;cursor:pointer;border:3px solid transparent;box-shadow:0 1px 4px rgba(44,31,14,.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:transform .15s,box-shadow .15s;}
+.accent-swatch:hover{transform:scale(1.15) rotate(-4deg);box-shadow:0 3px 8px rgba(44,31,14,.35);}
+.accent-swatch.selected{border-color:var(--ink);}
+.accent-swatch.selected::after{content:'✓';color:#fff;font-size:16px;font-weight:900;text-shadow:0 1px 2px rgba(0,0,0,.5);}
+.accent-custom-swatch{width:36px;height:36px;border-radius:50%;cursor:pointer;border:3px dashed var(--ink-soft);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:15px;background:conic-gradient(#A23E3E,#B8862E,#8C8C2E,#2E8C6B,#2A5D8C,#5A3A8C,#8C2E5E,#A23E3E);transition:transform .15s;}
+.accent-custom-swatch:hover{transform:scale(1.15);}
+.accent-preview-card{border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:14px;background:var(--bg);display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+.accent-preview-label{font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);width:100%;margin-bottom:2px;}
 
 /* STATUS */
 .status-card{padding:40px 20px;text-align:center;color:var(--ink-soft);font-size:14px;font-weight:700;border:1.5px dashed var(--border);border-radius:var(--r);background:var(--card);}
@@ -326,6 +335,17 @@ const CUISINES = ['Any','Italian','Mexican','Indian','Chinese','Japanese','Thai'
 const MEAL_SLOTS = ['Breakfast','Lunch','Dinner','Snack','Dessert'];
 const SWATCH_COLORS = ['#4F7042','#C2941F','#A23E1C','#8B6914','#2E5A6B','#5A3A7A','#7A3A52','#295C52','#5A5A37','#8C4E14','#6B7160','#3A6E32'];
 const AVATAR_COLORS = ['#4A7C3E','#C4693A','#2E5A6B','#7A3A52','#C2941F','#5A3A7A'];
+// A wider, named palette just for personal accent color — separate from category
+// swatches so this can be jazzed up without changing anyone's category colors.
+const ACCENT_PALETTE = [
+  {c:'#3A6E32',n:'Forest'},{c:'#2E7D5B',n:'Emerald'},{c:'#1F7A6C',n:'Teal'},
+  {c:'#1B6E7A',n:'Lagoon'},{c:'#2A5D8C',n:'Ocean'},{c:'#3D4E8C',n:'Indigo'},
+  {c:'#5A3A8C',n:'Violet'},{c:'#7A3A7A',n:'Plum'},{c:'#8C3A5E',n:'Berry'},
+  {c:'#A23E3E',n:'Crimson'},{c:'#C4693A',n:'Sunset'},{c:'#B8862E',n:'Amber'},
+  {c:'#8C8C2E',n:'Olive'},{c:'#4F7042',n:'Sage'},{c:'#2E5A6B',n:'Slate'},
+  {c:'#6B4E8C',n:'Lavender'},{c:'#8C4E2E',n:'Rust'},{c:'#2E8C6B',n:'Mint'},
+  {c:'#8C2E5E',n:'Magenta'},{c:'#5E6B2E',n:'Moss'}
+];
 const UNIT_LIST = ['pcs','g','kg','oz','lb','ml','l','cups','tbsp','tsp','cans','jars','boxes','bags','bunches','cloves'];
 const TIME_OPTIONS = [{v:'any',l:'Any time'},{v:'15',l:'≤15 min'},{v:'30',l:'≤30 min'},{v:'45',l:'≤45 min'},{v:'60',l:'≤1 hour'},{v:'90',l:'≤90 min'}];
 
@@ -2840,16 +2860,31 @@ function renderHouseholdAccount(){
     :'')+
   '</div>';
 
-  const accentSwatches=SWATCH_COLORS.map(sc=>'<button type="button" class="color-swatch '+((ui.myAccentColor||'')===sc?'selected':'')+'" aria-label="'+sc+'" style="background:'+sc+';" data-action="set-accent-color" data-val="'+sc+'"></button>').join('');
+  const currentAccent=ui.myAccentColor||'#3A6E32';
+  const accentName=(ACCENT_PALETTE.find(p=>p.c===currentAccent)||{}).n||'Custom';
+  const accentSwatches=ACCENT_PALETTE.map(p=>
+    '<button type="button" class="accent-swatch '+(currentAccent===p.c?'selected':'')+'" title="'+p.n+'" aria-label="'+p.n+'" style="background:'+p.c+';" data-action="set-accent-color" data-val="'+p.c+'"></button>'
+  ).join('');
+  const customSwatch='<button type="button" class="accent-custom-swatch" title="Pick any color" aria-label="Pick any color" data-action="open-custom-accent">🎨</button>'+
+    '<input type="color" id="accent-custom-input" data-change="accent-custom" value="'+currentAccent+'" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;">';
+  const previewCard='<div class="accent-preview-card">'+
+    '<span class="accent-preview-label">Live preview</span>'+
+    '<button type="button" class="btn btn-primary" style="background:'+currentAccent+';border-color:'+currentAccent+';pointer-events:none;">Sample button</button>'+
+    '<span class="pill-btn active" style="background:'+currentAccent+';border-color:'+currentAccent+';pointer-events:none;">Active tab</span>'+
+    '<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:'+currentAccent+';">'+
+      '<span style="width:10px;height:10px;border-radius:50%;background:'+currentAccent+';display:inline-block;flex-shrink:0;"></span>Accent text</span>'+
+  '</div>';
   const accentRow='<div class="settings-row" style="flex-direction:column;align-items:stretch;">'+
     '<div style="display:flex;align-items:center;gap:10px;">'+fieldLabel('Accent color')+
-      '<span class="color-swatch" style="background:'+(ui.myAccentColor||'#3A6E32')+';width:20px;height:20px;cursor:default;"></span>'+
+      '<span class="color-swatch" style="background:'+currentAccent+';width:20px;height:20px;cursor:default;"></span>'+
+      '<span class="settings-name" style="flex:none;">'+h(accentName)+'</span>'+
       pencil('accent')+
     '</div>'+
     (editing==='accent'?
       '<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px;">'+
-        '<div class="color-swatches">'+accentSwatches+'</div>'+
-        (ui.myAccentColor?'<button class="btn-ghost" data-action="reset-accent-color" style="font-size:12px;padding:0;margin-top:4px;">Reset to default</button>':'')+
+        '<div class="accent-swatches">'+accentSwatches+customSwatch+'</div>'+
+        previewCard+
+        (ui.myAccentColor?'<button class="btn-ghost" data-action="reset-accent-color" style="font-size:12px;padding:0;margin-top:10px;">Reset to default</button>':'')+
       '</div>'
     :'')+
   '</div>';
@@ -3330,6 +3365,7 @@ document.addEventListener('click',e=>{
     case 'save-profile': saveProfile();break;
     case 'set-accent-color': setAccentColor(a.val);break;
     case 'reset-accent-color': resetAccentColor();break;
+    case 'open-custom-accent':{const el=document.getElementById('accent-custom-input');if(el)el.click();}break;
     case 'reset-member-password': resetMemberPassword(a.id,a.email);break;
     case 'set-household-sub': ui.householdSubSection=a.val;render();break;
     case 'set-admin-sub': ui.adminSubSection=a.val;render();break;
@@ -3406,6 +3442,7 @@ document.addEventListener('change',e=>{
   else if(ch==='cook-prefer-have'){ui.cookFilters.preferHave=el.checked;}
   else if(ch==='item-cat') {const sel=document.getElementById('item-cat-select');if(sel)sel.dataset.touched='1';}
   else if(ch==='signup-invite-check'){ checkSignupInvite(el.value.trim()); }
+  else if(ch==='accent-custom'){ setAccentColor(el.value); }
 });
 
 document.addEventListener('submit',e=>{
