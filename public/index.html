@@ -255,7 +255,7 @@ input::placeholder,textarea::placeholder{color:var(--ink-soft);}
 }
 
 /* HOME DASHBOARD */
-.home-greeting{background:linear-gradient(135deg,var(--header) 0%,#2C4A28 100%);border-radius:var(--r);padding:24px 26px;color:#fff;margin-bottom:22px;box-shadow:var(--shadow);}
+.home-greeting{background:linear-gradient(135deg,var(--accent-dark,var(--header)) 0%,var(--green) 100%);border-radius:var(--r);padding:24px 26px;color:#fff;margin-bottom:22px;box-shadow:var(--shadow);transition:background .2s;}
 .home-greeting-name{font-family:'Bitter',Georgia,serif;font-size:22px;font-weight:700;margin-bottom:3px;}
 .home-greeting-date{font-size:13px;color:rgba(255,255,255,.65);font-weight:700;}
 .home-section-title{font-family:'Bitter',Georgia,serif;font-size:18px;font-weight:700;margin-bottom:12px;}
@@ -2945,14 +2945,14 @@ async function loadMe(){
 
 function applyAccentColor(color){
   const root=document.documentElement.style;
-  if(!color){ root.removeProperty('--green'); root.removeProperty('--green-soft'); return; }
+  if(!color){ root.removeProperty('--green'); root.removeProperty('--green-soft'); root.removeProperty('--accent-dark'); return; }
   root.setProperty('--green',color);
-  // Lighten the accent ~80% toward white for the "soft" badge/background variant
   const n=parseInt(color.slice(1),16);
-  const r=Math.round(((n>>16)&255)+(255-((n>>16)&255))*0.8);
-  const g=Math.round(((n>>8)&255)+(255-((n>>8)&255))*0.8);
-  const b=Math.round((n&255)+(255-(n&255))*0.8);
-  root.setProperty('--green-soft','rgb('+r+','+g+','+b+')');
+  const r=(n>>16)&255,g=(n>>8)&255,b=n&255;
+  // Lighten the accent ~80% toward white for the "soft" badge/background variant
+  root.setProperty('--green-soft','rgb('+Math.round(r+(255-r)*0.8)+','+Math.round(g+(255-g)*0.8)+','+Math.round(b+(255-b)*0.8)+')');
+  // Darken it ~58% toward black for the deep end of gradients like the Home greeting banner
+  root.setProperty('--accent-dark','rgb('+Math.round(r*0.42)+','+Math.round(g*0.42)+','+Math.round(b*0.42)+')');
 }
 
 async function loadCredits(){
