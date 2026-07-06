@@ -333,6 +333,41 @@ app.delete('/api/family/members/:id', auth, async (req, res) => {
   res.json({ ok: true, left: targetId === req.user.userId });
 });
 
+// Splits a member who joined the wrong household into their own brand-new one —
+// e.g. someone accidentally used a shared-family invite code instead of a new-family
+// code. Keeps their login intact; they just start fresh with no shared data.
+app.post('/api/family/members/:id/split-off', auth, async (req, res) => {
+  const targetId = Number(req.params.id);
+  if (!targetId) return res.status(400).json({ error: 'Invalid member id' });
+  if (targetId === req.user.userId) {
+    return res.status(400).json({ error: "You can't split yourself off — leave the household instead" });
+  }
+  const { rows: caller } = await pool.query('SELECT role FROM users WHERE id = $1', [req.user.userId]);
+  if (!caller[0] || caller[0].role !== 'owner') {
+    return res.status(403).json({ error: 'Only the household owner can do this' });
+  }
+  const { rows: target } = await pool.query('SELECT id, email FROM users WHERE id = $1 AND family_id = $2', [targetId, req.user.familyId]);
+  if (!target.length) return res.status(404).json({ error: 'Member not found in your household' });
+
+  const { familyName } = req.body || {};
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: fam } = await client.query(
+      'INSERT INTO families (name, is_owner_family, credits) VALUES ($1, false, 0) RETURNING id',
+      [familyName || (target[0].email.split('@')[0] + "'s Household")]
+    );
+    await client.query('UPDATE users SET family_id = $1, role = $2 WHERE id = $3', [fam[0].id, 'owner', targetId]);
+    await client.query('COMMIT');
+    res.json({ ok: true, newFamilyId: fam[0].id });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+
 app.get('/api/admin/families', auth, async (req, res) => {
   if (!req.user.isOwnerFamily) return res.status(403).json({ error: 'Owner access only' });
   const { rows } = await pool.query(`

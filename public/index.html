@@ -2653,7 +2653,9 @@ function renderSettingsFamily(){
     const isMe = m.id===ui.myUserId;
     let action='';
     if(isMe) action='<button class="btn-icon" data-action="leave-household" style="color:var(--orange);">Leave</button>';
-    else if(iAmOwner) action='<button class="btn-icon" data-action="remove-member" data-id="'+m.id+'" data-email="'+h(m.email)+'" style="color:var(--orange);">✕ Remove</button>';
+    else if(iAmOwner) action=
+      '<button class="btn-icon" data-action="split-off-member" data-id="'+m.id+'" data-email="'+h(m.email)+'" style="margin-right:6px;">↗ Move to new household</button>'+
+      '<button class="btn-icon" data-action="remove-member" data-id="'+m.id+'" data-email="'+h(m.email)+'" style="color:var(--orange);">✕ Remove</button>';
     return '<div class="settings-row"><span style="font-weight:700;">'+h(m.email)+(isMe?' <span style="color:var(--ink-soft);font-weight:600;">(you)</span>':'')+'</span>'+
       '<span style="display:flex;align-items:center;gap:8px;"><span style="color:var(--ink-soft);font-size:12px;">'+h(m.role)+' · joined '+h(new Date(m.created_at).toLocaleDateString())+'</span>'+action+'</span></div>';
   }).join('');
@@ -2838,6 +2840,15 @@ async function removeMember(id,email){
   if(!confirm('Remove '+email+' from your household? They will no longer be able to sign in.')) return;
   const data=await api('DELETE','family/members/'+id);
   if(data&&data.ok){ ui.membersLoaded=false; }
+  render();
+}
+
+async function splitOffMember(id,email){
+  if(!confirm(email+' will be moved out of this household into their own brand-new one, starting completely empty. '+
+    'They keep their login but lose access to this household\'s shared data. Continue?')) return;
+  const data=await api('POST','family/members/'+id+'/split-off',{});
+  if(data&&data.ok){ ui.membersLoaded=false; alert(email+' now has their own household.'); }
+  else{ alert('Couldn\'t move '+email+' — please try again.'); }
   render();
 }
 
@@ -3096,6 +3107,7 @@ document.addEventListener('click',e=>{
     case 'generate-new-family-invite': generateNewFamilyInvite();break;
     case 'buy-credits': buyCredits(a.pack);break;
     case 'remove-member': removeMember(a.id,a.email);break;
+    case 'split-off-member': splitOffMember(a.id,a.email);break;
     case 'leave-household': leaveHousehold();break;
     case 'open-billing': ui.tab='settings';ui.settingsSection='family';render();break;
   }
