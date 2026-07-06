@@ -168,6 +168,7 @@ async function initDB() {
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT');
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT');
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS accent_color TEXT');
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS theme TEXT DEFAULT 'light'");
   await backfillOwnerFamily();
   await swapAppStatePrimaryKey();
   // Self-healing: families created before roles were assigned correctly get their
@@ -218,7 +219,7 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.get('/api/me', auth, async (req, res) => {
-  const { rows } = await pool.query('SELECT email, role, first_name, last_name, accent_color FROM users WHERE id = $1', [req.user.userId]);
+  const { rows } = await pool.query('SELECT email, role, first_name, last_name, accent_color, theme FROM users WHERE id = $1', [req.user.userId]);
   res.json({
     userId: req.user.userId,
     email: rows[0] ? rows[0].email : null,
@@ -226,9 +227,19 @@ app.get('/api/me', auth, async (req, res) => {
     firstName: rows[0] ? rows[0].first_name : null,
     lastName: rows[0] ? rows[0].last_name : null,
     accentColor: rows[0] ? rows[0].accent_color : null,
+    theme: rows[0] ? (rows[0].theme || 'light') : 'light',
     familyId: req.user.familyId,
     isOwnerFamily: !!req.user.isOwnerFamily,
   });
+});
+
+app.post('/api/account/theme', auth, async (req, res) => {
+  const { theme } = req.body || {};
+  if (theme !== 'light' && theme !== 'dark') {
+    return res.status(400).json({ error: "Theme must be 'light' or 'dark'" });
+  }
+  await pool.query('UPDATE users SET theme = $1 WHERE id = $2', [theme, req.user.userId]);
+  res.json({ ok: true });
 });
 
 app.post('/api/account/profile', auth, async (req, res) => {
