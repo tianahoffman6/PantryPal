@@ -430,7 +430,7 @@ function signOut(){
   ui.creditsLoaded=false;ui.credits=null;
   ui.billingLoaded=false;ui.billingHistory=[];
   ui.adminLoaded=false;ui.adminFamilies=[];
-  ui.auditLoaded=false;ui.auditLog=[];ui.showAuditLog=false;
+  ui.auditLoaded=false;ui.auditLog=[];
   ui.inviteCode='';ui.newInviteCode='';
   ui.accountMsg='';ui.accountErr='';ui.emailMsg='';ui.emailErr='';
   ui.myFirstName='';ui.myLastName='';ui.profileMsg='';ui.resetPasswordResult=null;
@@ -563,8 +563,9 @@ let ui={
   inviteCode:'', inviteExpires:'', invitingLoading:false,
   credits:null, creditsLoaded:false, checkoutLoading:false, checkoutMessage:'',
   familyMembers:[], membersLoaded:false, isOwnerFamily:false, meLoaded:false,
-  auditLog:[], auditLoaded:false, showAuditLog:false,
+  auditLog:[], auditLoaded:false,
   myFirstName:'', myLastName:'', myAccentColor:null, profileMsg:'', resetPasswordResult:null,
+  householdSubSection:'household', adminSubSection:'onboard', acctEditField:null,
   myUserId:null, myRole:'member', myEmail:'',
   adminFamilies:[], adminLoaded:false, newInviteCode:'', newInviteExpires:'', newInviteLoading:false,
   accountMsg:'', accountErr:'', emailMsg:'', emailErr:'',
@@ -1298,6 +1299,7 @@ async function boot(){
     if(checkoutParam==='success'){
       ui.tab='settings';
       ui.settingsSection='household';
+      ui.householdSubSection='billing';
       ui.checkoutMessage='Payment received — updating your balance…';
       ui.creditsLoaded=false;
       ui.billingLoaded=false;
@@ -2671,9 +2673,26 @@ function renderSettingsHousehold(){
   if(!ui.creditsLoaded) loadCredits();
   if(!ui.membersLoaded) loadMembers();
   if(!ui.billingLoaded) loadBillingHistory();
-  if(ui.myRole==='owner'&&!ui.auditLoaded) loadAuditLog();
-  const creditsRow = ui.credits===null ? 'Unlimited' : (ui.credits+' recipe generation'+(ui.credits===1?'':'s')+' remaining');
   const iAmOwner = ui.myRole==='owner';
+  if(iAmOwner&&!ui.auditLoaded) loadAuditLog();
+
+  const subs=[{id:'household',label:'Household'},{id:'billing',label:'Billing'}];
+  if(iAmOwner) subs.push({id:'activity',label:'Activity'});
+  subs.push({id:'account',label:'My Account'});
+  const subNav=subs.map(s=>'<button class="pill-btn '+(ui.householdSubSection===s.id?'active':'')+'" data-action="set-household-sub" data-val="'+s.id+'">'+s.label+'</button>').join('');
+
+  let body='';
+  if(ui.householdSubSection==='billing') body=renderHouseholdBilling();
+  else if(ui.householdSubSection==='activity'&&iAmOwner) body=renderHouseholdActivity();
+  else if(ui.householdSubSection==='account') body=renderHouseholdAccount();
+  else body=renderHouseholdMain(iAmOwner);
+
+  return '<div class="settings-section-title">Household & Account</div>'+
+    '<div class="settings-nav">'+subNav+'</div>'+
+    body;
+}
+
+function renderHouseholdMain(iAmOwner){
   const membersList = ui.familyMembers.map(m=>{
     const isMe = m.id===ui.myUserId;
     const fullName=[m.first_name,m.last_name].filter(Boolean).join(' ');
@@ -2700,6 +2719,51 @@ function renderSettingsHousehold(){
       '</div>'+resetBox+
     '</div>';
   }).join('');
+  return '<div class="form-card" style="margin-bottom:16px;">'+
+      '<div class="field" style="margin-bottom:14px;"><label>Household name</label>'+
+        '<input id="household-name-input" value="'+h(ui.householdEdit||state.settings.householdName)+'" placeholder="e.g. The Smiths" data-live="household-name"></div>'+
+      '<button class="btn btn-primary" data-action="save-household">Save</button>'+
+    '</div>'+
+    '<div class="form-card" style="margin-bottom:16px;">'+
+      '<div class="field">'+
+        '<label>Household members</label>'+
+        (membersList||'<p style="color:var(--ink-soft);font-size:13px;">Loading…</p>')+
+      '</div>'+
+    '</div>'+
+    '<div class="form-card">'+
+      '<div class="field" style="margin-bottom:14px;"><label>Invite a family member</label>'+
+        '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">Generate a code so someone else can sign in to your household\'s shared data.</p>'+
+        '<button class="btn btn-primary" data-action="generate-invite" '+(ui.invitingLoading?'disabled':'')+'>'+(ui.invitingLoading?'Generating…':'Generate invite code')+'</button>'+
+        (ui.inviteCode?'<div class="form-card" style="margin-top:12px;background:var(--bg);"><code style="font-size:15px;font-weight:800;">'+h(ui.inviteCode)+'</code>'+
+          '<p style="color:var(--ink-soft);font-size:12px;margin-top:6px;">Expires '+h(new Date(ui.inviteExpires).toLocaleDateString())+'. Share this code — they\'ll enter it on the sign-up screen.</p></div>':'')+
+      '</div>'+
+    '</div>';
+}
+
+function renderHouseholdBilling(){
+  const creditsRow = ui.credits===null ? 'Unlimited' : (ui.credits+' recipe generation'+(ui.credits===1?'':'s')+' remaining');
+  const packBtns = ui.credits!==null ? [
+    {key:'small',label:'50 — $5'},
+    {key:'medium',label:'150 — $12'},
+    {key:'large',label:'500 — $35'}
+  ].map(p=>'<button class="btn btn-secondary" data-action="buy-credits" data-pack="'+p.key+'" '+(ui.checkoutLoading?'disabled':'')+' style="margin-right:8px;margin-bottom:8px;">'+(ui.checkoutLoading?'Redirecting…':p.label)+'</button>').join('') : '';
+  const history = ui.billingHistory.length
+    ? ui.billingHistory.map(p=>'<div class="settings-row"><span style="font-weight:700;">+'+p.credits+' credits</span>'+
+        '<span style="color:var(--ink-soft);font-size:12px;">$'+(p.amount_cents/100).toFixed(2)+' · '+h(new Date(p.created_at).toLocaleDateString())+'</span></div>').join('')
+    : '';
+  return '<div class="form-card">'+
+      '<div class="field">'+
+        '<label>AI recipe generation credits</label>'+
+        '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">'+h(creditsRow)+'</p>'+
+        (ui.credits!==null&&ui.credits<=5?'<p style="color:var(--orange);font-size:12.5px;font-weight:800;margin:-4px 0 10px;">⚡ Running low — top up so recipe generation keeps working.</p>':'')+
+        packBtns+
+        (ui.checkoutMessage?'<p style="color:var(--green);font-size:13px;font-weight:700;margin-top:10px;">'+h(ui.checkoutMessage)+'</p>':'')+
+        (history?'<div style="margin-top:16px;"><label>Purchase history</label>'+history+'</div>':'')+
+      '</div>'+
+    '</div>';
+}
+
+function renderHouseholdActivity(){
   const AUDIT_LABELS={
     remove_member:'removed', split_off_member:'moved', self_split_off:'started their own household, leaving',
     create_invite:'generated an invite code', create_new_family_invite:'generated a new-household invite code',
@@ -2711,113 +2775,116 @@ function renderSettingsHousehold(){
     return '<div class="settings-row"><span style="font-size:13px;">'+h(e.actor_email)+' '+label+target+'</span>'+
       '<span style="color:var(--ink-soft);font-size:12px;">'+h(new Date(e.created_at).toLocaleString())+'</span></div>';
   }).join('');
-  const auditSection=iAmOwner?
-    '<div class="form-card" style="margin-bottom:16px;">'+
+  return '<div class="form-card">'+
       '<div class="field">'+
-        '<button type="button" class="btn-ghost" data-action="toggle-audit-log" style="padding:0;font-weight:800;">'+
-          (ui.showAuditLog?'▾':'▸')+' Recent activity</button>'+
-        (ui.showAuditLog?'<div style="margin-top:10px;">'+(auditRows||'<p style="color:var(--ink-soft);font-size:13px;">Nothing yet.</p>')+'</div>':'')+
+        '<label>Recent activity</label>'+
+        (auditRows||'<p style="color:var(--ink-soft);font-size:13px;">Nothing yet.</p>')+
       '</div>'+
-    '</div>':'';
-  const packBtns = ui.credits!==null ? [
-    {key:'small',label:'50 — $5'},
-    {key:'medium',label:'150 — $12'},
-    {key:'large',label:'500 — $35'}
-  ].map(p=>'<button class="btn btn-secondary" data-action="buy-credits" data-pack="'+p.key+'" '+(ui.checkoutLoading?'disabled':'')+' style="margin-right:8px;margin-bottom:8px;">'+(ui.checkoutLoading?'Redirecting…':p.label)+'</button>').join('') : '';
-  const history = ui.billingHistory.length
-    ? ui.billingHistory.map(p=>'<div class="settings-row"><span style="font-weight:700;">+'+p.credits+' credits</span>'+
-        '<span style="color:var(--ink-soft);font-size:12px;">$'+(p.amount_cents/100).toFixed(2)+' · '+h(new Date(p.created_at).toLocaleDateString())+'</span></div>').join('')
-    : '';
-  const accentSwatches=SWATCH_COLORS.map(sc=>'<button type="button" class="color-swatch '+((ui.myAccentColor||'')===sc?'selected':'')+'" aria-label="'+sc+'" style="background:'+sc+';" data-action="set-accent-color" data-val="'+sc+'"></button>').join('');
-  return '<div class="settings-section-title">Household & Account</div>'+
-    '<div class="form-card" style="margin-bottom:16px;">'+
-      '<div class="field" style="margin-bottom:14px;"><label>Household name</label>'+
-        '<input id="household-name-input" value="'+h(ui.householdEdit||state.settings.householdName)+'" placeholder="e.g. The Smiths" data-live="household-name"></div>'+
-      '<button class="btn btn-primary" data-action="save-household">Save</button>'+
+    '</div>';
+}
+
+function renderHouseholdAccount(){
+  const editing=ui.acctEditField;
+  const fieldLabel=(text)=>'<span style="width:100px;flex-shrink:0;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);">'+text+'</span>';
+  const pencil=(field)=>'<button class="btn-ghost" data-action="toggle-acct-edit" data-field="'+field+'">'+(editing===field?'×':'✏')+'</button>';
+
+  const fullName=[ui.myFirstName,ui.myLastName].filter(Boolean).join(' ');
+  const nameRow='<div class="settings-row" style="flex-direction:column;align-items:stretch;">'+
+    '<div style="display:flex;align-items:center;gap:10px;">'+fieldLabel('Name')+
+      '<span class="settings-name">'+(fullName?h(fullName):'<span style="color:var(--ink-soft);font-weight:600;">Not set</span>')+'</span>'+
+      pencil('name')+
     '</div>'+
-    '<div class="form-card" style="margin-bottom:16px;">'+
-      '<div class="field">'+
-        '<label>Household members</label>'+
-        (membersList||'<p style="color:var(--ink-soft);font-size:13px;">Loading…</p>')+
-      '</div>'+
-    '</div>'+
-    '<div class="form-card" style="margin-bottom:16px;">'+
-      '<div class="field" style="margin-bottom:14px;"><label>Invite a family member</label>'+
-        '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">Generate a code so someone else can sign in to your household\'s shared data.</p>'+
-        '<button class="btn btn-primary" data-action="generate-invite" '+(ui.invitingLoading?'disabled':'')+'>'+(ui.invitingLoading?'Generating…':'Generate invite code')+'</button>'+
-        (ui.inviteCode?'<div class="form-card" style="margin-top:12px;background:var(--bg);"><code style="font-size:15px;font-weight:800;">'+h(ui.inviteCode)+'</code>'+
-          '<p style="color:var(--ink-soft);font-size:12px;margin-top:6px;">Expires '+h(new Date(ui.inviteExpires).toLocaleDateString())+'. Share this code — they\'ll enter it on the sign-up screen.</p></div>':'')+
-      '</div>'+
-    '</div>'+
-    '<div class="form-card" style="margin-bottom:16px;">'+
-      '<div class="field">'+
-        '<label>AI recipe generation credits</label>'+
-        '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">'+h(creditsRow)+'</p>'+
-        (ui.credits!==null&&ui.credits<=5?'<p style="color:var(--orange);font-size:12.5px;font-weight:800;margin:-4px 0 10px;">⚡ Running low — top up so recipe generation keeps working.</p>':'')+
-        packBtns+
-        (ui.checkoutMessage?'<p style="color:var(--green);font-size:13px;font-weight:700;margin-top:10px;">'+h(ui.checkoutMessage)+'</p>':'')+
-        (history?'<div style="margin-top:16px;"><label>Purchase history</label>'+history+'</div>':'')+
-      '</div>'+
-    '</div>'+
-    auditSection+
-    '<div class="form-card" style="margin-bottom:16px;">'+
-      '<div class="field">'+
-        '<label>My profile</label>'+
-        '<div class="form-grid" style="margin:10px 0;">'+
+    (editing==='name'?
+      '<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px;">'+
+        '<div class="form-grid" style="margin-bottom:10px;">'+
           '<div class="field"><label>First name</label><input id="profile-first-name" value="'+h(ui.myFirstName||'')+'" placeholder="e.g. Tiana"></div>'+
           '<div class="field"><label>Last name</label><input id="profile-last-name" value="'+h(ui.myLastName||'')+'" placeholder="e.g. Hoffman"></div>'+
         '</div>'+
-        (ui.profileMsg?'<p style="color:var(--green);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.profileMsg)+'</p>':'')+
-        '<button class="btn btn-primary" data-action="save-profile">Save profile</button>'+
-      '</div>'+
+        (ui.profileMsg?'<p style="color:var(--orange);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.profileMsg)+'</p>':'')+
+        '<button class="btn btn-primary" data-action="save-profile">Save</button>'+
+      '</div>'
+    :'')+
+  '</div>';
+
+  const emailRow='<div class="settings-row" style="flex-direction:column;align-items:stretch;">'+
+    '<div style="display:flex;align-items:center;gap:10px;">'+fieldLabel('Email')+
+      '<span class="settings-name">'+h(ui.myEmail||'')+'</span>'+
+      pencil('email')+
     '</div>'+
-    '<div class="form-card" style="margin-bottom:16px;">'+
-      '<div class="field">'+
-        '<label>Personalization</label>'+
-        '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:8px;">Pick an accent color for your own view of PantryPal.</p>'+
+    (editing==='email'?
+      '<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px;">'+
+        '<form data-form="change-email">'+
+          '<div class="field" style="margin-bottom:10px;"><label>New email</label><input type="email" id="acct-email-new" autocomplete="email" required></div>'+
+          '<div class="field" style="margin-bottom:10px;"><label>Confirm with your password</label><input type="password" id="acct-email-pw" autocomplete="current-password" required></div>'+
+          (ui.emailErr?'<p style="color:var(--orange);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.emailErr)+'</p>':'')+
+          '<button type="submit" class="btn btn-primary">Update email</button>'+
+        '</form>'+
+      '</div>'
+    :'')+
+  '</div>';
+
+  const passwordRow='<div class="settings-row" style="flex-direction:column;align-items:stretch;">'+
+    '<div style="display:flex;align-items:center;gap:10px;">'+fieldLabel('Password')+
+      '<span class="settings-name">••••••••</span>'+
+      pencil('password')+
+    '</div>'+
+    (editing==='password'?
+      '<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px;">'+
+        '<form data-form="change-password">'+
+          '<div class="field" style="margin-bottom:10px;"><label>Current password</label><input type="password" id="acct-pw-current" autocomplete="current-password" required></div>'+
+          '<div class="field" style="margin-bottom:10px;"><label>New password (8+ characters)</label><input type="password" id="acct-pw-new" autocomplete="new-password" minlength="8" required></div>'+
+          (ui.accountErr?'<p style="color:var(--orange);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.accountErr)+'</p>':'')+
+          '<button type="submit" class="btn btn-primary">Update password</button>'+
+        '</form>'+
+      '</div>'
+    :'')+
+  '</div>';
+
+  const accentSwatches=SWATCH_COLORS.map(sc=>'<button type="button" class="color-swatch '+((ui.myAccentColor||'')===sc?'selected':'')+'" aria-label="'+sc+'" style="background:'+sc+';" data-action="set-accent-color" data-val="'+sc+'"></button>').join('');
+  const accentRow='<div class="settings-row" style="flex-direction:column;align-items:stretch;">'+
+    '<div style="display:flex;align-items:center;gap:10px;">'+fieldLabel('Accent color')+
+      '<span class="color-swatch" style="background:'+(ui.myAccentColor||'#3A6E32')+';width:20px;height:20px;cursor:default;"></span>'+
+      pencil('accent')+
+    '</div>'+
+    (editing==='accent'?
+      '<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px;">'+
         '<div class="color-swatches">'+accentSwatches+'</div>'+
         (ui.myAccentColor?'<button class="btn-ghost" data-action="reset-accent-color" style="font-size:12px;padding:0;margin-top:4px;">Reset to default</button>':'')+
-      '</div>'+
-    '</div>'+
-    '<div class="form-card" style="margin-bottom:16px;">'+
-      '<form data-form="change-password">'+
-        '<div class="field" style="margin-bottom:12px;"><label>Change password</label>'+
-          '<input type="password" id="acct-pw-current" autocomplete="current-password" placeholder="Current password" required style="margin-bottom:8px;">'+
-          '<input type="password" id="acct-pw-new" autocomplete="new-password" placeholder="New password (8+ characters)" minlength="8" required></div>'+
-        (ui.accountErr?'<p style="color:var(--orange);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.accountErr)+'</p>':'')+
-        (ui.accountMsg?'<p style="color:var(--green);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.accountMsg)+'</p>':'')+
-        '<button type="submit" class="btn btn-primary">Update password</button>'+
-      '</form>'+
-    '</div>'+
-    '<div class="form-card">'+
-      '<form data-form="change-email">'+
-        '<div class="field" style="margin-bottom:12px;"><label>Change email</label>'+
-          '<p style="color:var(--ink-soft);font-size:12.5px;margin-bottom:8px;">Currently signed in as <strong>'+h(ui.myEmail||'…')+'</strong></p>'+
-          '<input type="email" id="acct-email-new" autocomplete="email" placeholder="New email" required style="margin-bottom:8px;">'+
-          '<input type="password" id="acct-email-pw" autocomplete="current-password" placeholder="Confirm with your password" required></div>'+
-        (ui.emailErr?'<p style="color:var(--orange);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.emailErr)+'</p>':'')+
-        (ui.emailMsg?'<p style="color:var(--green);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.emailMsg)+'</p>':'')+
-        '<button type="submit" class="btn btn-primary">Update email</button>'+
-      '</form>'+
-    '</div>';
+      '</div>'
+    :'')+
+  '</div>';
+
+  return '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:12px;">Only you see this — signing in as someone else in this household shows their own name, password, and personalization, not yours.</p>'+
+    nameRow+emailRow+passwordRow+accentRow;
 }
 
 function renderSettingsAdmin(){
   if(!ui.adminLoaded) loadAdminFamilies();
-  const rows = ui.adminFamilies.map(f=>
-    '<div class="settings-row"><span style="font-weight:700;">'+h(f.name)+(f.is_owner_family?' (you)':'')+'</span>'+
-      '<span style="color:var(--ink-soft);font-size:12px;">'+(f.credits===null?'Unlimited':f.credits+' credits')+' · '+f.member_count+' member'+(f.member_count===1?'':'s')+' · joined '+h(new Date(f.created_at).toLocaleDateString())+'</span></div>'
-  ).join('');
+  const subs=[{id:'onboard',label:'Onboard'},{id:'households',label:'All households'}];
+  const subNav=subs.map(s=>'<button class="pill-btn '+(ui.adminSubSection===s.id?'active':'')+'" data-action="set-admin-sub" data-val="'+s.id+'">'+s.label+'</button>').join('');
+  const body=ui.adminSubSection==='households'?renderAdminHouseholds():renderAdminOnboard();
   return '<div class="settings-section-title">Admin</div>'+
-    '<div class="form-card" style="margin-bottom:16px;">'+
+    '<div class="settings-nav">'+subNav+'</div>'+
+    body;
+}
+
+function renderAdminOnboard(){
+  return '<div class="form-card">'+
       '<div class="field" style="margin-bottom:14px;"><label>Onboard a new family</label>'+
         '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">Generate an invite code for a brand-new, independent family (separate data, starts with 0 credits).</p>'+
         '<button class="btn btn-primary" data-action="generate-new-family-invite" '+(ui.newInviteLoading?'disabled':'')+'>'+(ui.newInviteLoading?'Generating…':'Generate new-family invite code')+'</button>'+
         (ui.newInviteCode?'<div class="form-card" style="margin-top:12px;background:var(--bg);"><code style="font-size:15px;font-weight:800;">'+h(ui.newInviteCode)+'</code>'+
           '<p style="color:var(--ink-soft);font-size:12px;margin-top:6px;">Expires '+h(new Date(ui.newInviteExpires).toLocaleDateString())+'.</p></div>':'')+
       '</div>'+
-    '</div>'+
-    '<div class="form-card">'+
+    '</div>';
+}
+
+function renderAdminHouseholds(){
+  const rows = ui.adminFamilies.map(f=>
+    '<div class="settings-row"><span style="font-weight:700;">'+h(f.name)+(f.is_owner_family?' (you)':'')+'</span>'+
+      '<span style="color:var(--ink-soft);font-size:12px;">'+(f.credits===null?'Unlimited':f.credits+' credits')+' · '+f.member_count+' member'+(f.member_count===1?'':'s')+' · joined '+h(new Date(f.created_at).toLocaleDateString())+'</span></div>'
+  ).join('');
+  return '<div class="form-card">'+
       '<div class="field">'+
         '<label>All households</label>'+
         (rows||'<p style="color:var(--ink-soft);font-size:13px;">Loading…</p>')+
@@ -2926,7 +2993,7 @@ async function changePassword(){
   const newPassword=document.getElementById('acct-pw-new').value;
   ui.accountErr='';ui.accountMsg='';
   const data=await api('POST','account/change-password',{currentPassword,newPassword});
-  if(data&&data.ok){ ui.accountMsg='Password updated.'; }
+  if(data&&data.ok){ ui.acctEditField=null; }
   else{ ui.accountErr=lastApiStatus===401?'Current password is incorrect.':'Couldn\'t update password — check the requirements and try again.'; }
   render();
 }
@@ -2936,7 +3003,7 @@ async function changeEmail(){
   const password=document.getElementById('acct-email-pw').value;
   ui.emailErr='';ui.emailMsg='';
   const data=await api('POST','account/change-email',{password,newEmail});
-  if(data&&data.ok){ ui.emailMsg='Email updated.'; ui.myEmail=newEmail; ui.membersLoaded=false; }
+  if(data&&data.ok){ ui.myEmail=newEmail; ui.membersLoaded=false; ui.acctEditField=null; }
   else{ ui.emailErr=lastApiStatus===401?'Password is incorrect.':(lastApiStatus===409?'That email is already in use.':'Couldn\'t update email — try again.'); }
   render();
 }
@@ -2947,8 +3014,10 @@ async function saveProfile(){
   ui.profileMsg='';
   const data=await api('POST','account/profile',{firstName,lastName});
   if(data&&data.ok){
-    ui.myFirstName=firstName.trim();ui.myLastName=lastName.trim();ui.profileMsg='Profile updated.';
-    ui.membersLoaded=false;
+    ui.myFirstName=firstName.trim();ui.myLastName=lastName.trim();
+    ui.membersLoaded=false;ui.acctEditField=null;
+  } else {
+    ui.profileMsg='Couldn\'t save — please try again.';
   }
   render();
 }
@@ -3258,12 +3327,17 @@ document.addEventListener('click',e=>{
     case 'split-off-member': splitOffMember(a.id,a.email);break;
     case 'self-split-off': selfSplitOff();break;
     case 'leave-household': leaveHousehold();break;
-    case 'toggle-audit-log': ui.showAuditLog=!ui.showAuditLog;render();break;
     case 'save-profile': saveProfile();break;
     case 'set-accent-color': setAccentColor(a.val);break;
     case 'reset-accent-color': resetAccentColor();break;
     case 'reset-member-password': resetMemberPassword(a.id,a.email);break;
-    case 'open-billing': ui.tab='settings';ui.settingsSection='household';render();break;
+    case 'set-household-sub': ui.householdSubSection=a.val;render();break;
+    case 'set-admin-sub': ui.adminSubSection=a.val;render();break;
+    case 'toggle-acct-edit':
+      ui.acctEditField=ui.acctEditField===a.field?null:a.field;
+      ui.profileMsg='';ui.accountMsg='';ui.accountErr='';ui.emailMsg='';ui.emailErr='';
+      render();break;
+    case 'open-billing': ui.tab='settings';ui.settingsSection='household';ui.householdSubSection='billing';render();break;
   }
 });
 
