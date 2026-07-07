@@ -361,22 +361,25 @@ const ACCENT_PALETTE = [
   {c:'#6B4E8C',n:'Lavender'},{c:'#8C4E2E',n:'Rust'},{c:'#2E8C6B',n:'Mint'},
   {c:'#8C2E5E',n:'Magenta'},{c:'#5E6B2E',n:'Moss'}
 ];
-const UNIT_LIST = ['pcs','g','kg','oz','lb','ml','l','cups','tbsp','tsp','cans','jars','boxes','bags','bunches','cloves'];
+const WEIGHT_UNITS = ['g','kg','oz','lb','ml','l','cups','tbsp','tsp'];
+const COUNT_UNITS = ['pcs','cans','jars','boxes','bags','bunches','cloves'];
+const UNIT_LIST = [...COUNT_UNITS.slice(0,1),...WEIGHT_UNITS,...COUNT_UNITS.slice(1)];
 const TIME_OPTIONS = [{v:'any',l:'Any time'},{v:'15',l:'≤15 min'},{v:'30',l:'≤30 min'},{v:'45',l:'≤45 min'},{v:'60',l:'≤1 hour'},{v:'90',l:'≤90 min'}];
+const DURATION_PRESETS = [{label:'1 week',days:7},{label:'1 month',months:1},{label:'3 months',months:3},{label:'6 months',months:6},{label:'12 months',months:12}];
 
 const DEFAULT_CATEGORIES = [
-  {id:'produce',name:'Produce',emoji:'🥦',color:'#4F7042',bg:'#DCE8CE'},
-  {id:'dairy',name:'Dairy & Eggs',emoji:'🥛',color:'#C2941F',bg:'#FCEFC7'},
-  {id:'meat',name:'Meat & Seafood',emoji:'🥩',color:'#A23E1C',bg:'#F0D6C9'},
-  {id:'grains',name:'Grains & Bread',emoji:'🍞',color:'#8B6914',bg:'#EDE0C0'},
-  {id:'pantry',name:'Pantry & Dry Goods',emoji:'🫙',color:'#7A5C10',bg:'#E9D9A8'},
-  {id:'canned',name:'Canned & Jarred',emoji:'🥫',color:'#5A5A37',bg:'#DCD9BD'},
-  {id:'condiments',name:'Condiments & Sauces',emoji:'🫒',color:'#7A3A52',bg:'#E8D3DA'},
-  {id:'spices',name:'Spices & Seasonings',emoji:'🧂',color:'#8C4E14',bg:'#F3D9BF'},
-  {id:'frozen',name:'Frozen',emoji:'🧊',color:'#2E5A6B',bg:'#D7E6EC'},
-  {id:'snacks',name:'Snacks',emoji:'🍿',color:'#5A3A7A',bg:'#E6D7EE'},
-  {id:'beverages',name:'Beverages',emoji:'🧃',color:'#295C52',bg:'#CFE6E2'},
-  {id:'other',name:'Other',emoji:'📦',color:'#6B7160',bg:'#E2DCCB'}
+  {id:'produce',name:'Produce',emoji:'🥦',color:'#4F7042',bg:'#DCE8CE',trackBy:'count',noExpiry:false},
+  {id:'dairy',name:'Dairy & Eggs',emoji:'🥛',color:'#C2941F',bg:'#FCEFC7',trackBy:'count',noExpiry:false},
+  {id:'meat',name:'Meat & Seafood',emoji:'🥩',color:'#A23E1C',bg:'#F0D6C9',trackBy:'weight',noExpiry:false},
+  {id:'grains',name:'Grains & Bread',emoji:'🍞',color:'#8B6914',bg:'#EDE0C0',trackBy:'count',noExpiry:false},
+  {id:'pantry',name:'Pantry & Dry Goods',emoji:'🫙',color:'#7A5C10',bg:'#E9D9A8',trackBy:'weight',noExpiry:false},
+  {id:'canned',name:'Canned & Jarred',emoji:'🥫',color:'#5A5A37',bg:'#DCD9BD',trackBy:'count',noExpiry:false},
+  {id:'condiments',name:'Condiments & Sauces',emoji:'🫒',color:'#7A3A52',bg:'#E8D3DA',trackBy:'count',noExpiry:false},
+  {id:'spices',name:'Spices & Seasonings',emoji:'🧂',color:'#8C4E14',bg:'#F3D9BF',trackBy:'weight',noExpiry:false},
+  {id:'frozen',name:'Frozen',emoji:'🧊',color:'#2E5A6B',bg:'#D7E6EC',trackBy:'count',noExpiry:false},
+  {id:'snacks',name:'Snacks',emoji:'🍿',color:'#5A3A7A',bg:'#E6D7EE',trackBy:'count',noExpiry:false},
+  {id:'beverages',name:'Beverages',emoji:'🧃',color:'#295C52',bg:'#CFE6E2',trackBy:'count',noExpiry:false},
+  {id:'other',name:'Other',emoji:'📦',color:'#6B7160',bg:'#E2DCCB',trackBy:'count',noExpiry:false}
 ];
 
 const CAT_KEYWORDS = {
@@ -503,6 +506,14 @@ async function loadState(){
   state.settings  = data.settings || defaultSettings();
   // back-fill any missing settings keys
   if(!state.settings.categories) state.settings.categories = DEFAULT_CATEGORIES.map(c=>({...c}));
+  // back-fill trackBy/noExpiry on categories saved before this feature existed
+  state.settings.categories.forEach(cat=>{
+    if(!cat.trackBy){
+      const def=DEFAULT_CATEGORIES.find(d=>d.name===cat.name);
+      cat.trackBy=def?def.trackBy:'count';
+    }
+    if(typeof cat.noExpiry!=='boolean') cat.noExpiry=false;
+  });
   if(!state.settings.stores)     state.settings.stores = [];
   if(!state.settings.cuisines)   state.settings.cuisines = defaultSettings().cuisines;
   if(!state.settings.members)    state.settings.members = defaultSettings().members;
@@ -573,7 +584,7 @@ let ui={
   cookingModal:null, // {date,slot,meal,checklist:{},generating:false,generatedRecipe:null,error:''}
   // kitchen
   kitchenSearch:'', kitchenLoc:'All', kitchenCat:'All', kitchenExpiry:'all',
-  showAddItem:false, editingItemId:null,
+  showAddItem:false, editingItemId:null, itemFormRows:[], batchFormError:'',
   // grocery
   grocerySearch:'', groceryGroup:'category', groceryStore:'All', showChecked:false,
   showAddGrocery:false, groceryQuickCat:'Other', groceryQuickCatBg:'#E2DCCB', groceryQuickCatColor:'#6B7160', groceryQuickEmoji:'📦',
@@ -591,8 +602,8 @@ let ui={
   suggestedSides:{}, suggestingSideFor:null, sideError:'',
   // settings
   settingsSection:'categories', editCatId:null, showAddCat:false,
-  newCatName:'', newCatEmoji:'🍽', newCatColor:'#4F7042',
-  editCatName:'', editCatEmoji:'', editCatColor:'',
+  newCatName:'', newCatEmoji:'🍽', newCatColor:'#4F7042', newCatTrackBy:'count', newCatNoExpiry:false,
+  editCatName:'', editCatEmoji:'', editCatColor:'', editCatTrackBy:'count', editCatNoExpiry:false,
   newStore:'', newCuisine:'', householdEdit:'',
   // auth
   loginError:'', syncError:'', authMode:'login', signupError:'',
@@ -636,12 +647,21 @@ function expiryLabel(dateStr){
   return d.toLocaleDateString(undefined,{month:'short',day:'numeric'});
 }
 function isExpiring(item){
+  if(item.expiryMode==='never') return false;
   if(!item.expiresOn) return false;
   const d=new Date(item.expiresOn+'T00:00:00');
   const today=new Date(); today.setHours(0,0,0,0);
   const diff=Math.round((d-today)/86400000);
   return diff<=3;
 }
+function addDurationToToday(preset){
+  const d=new Date(); d.setHours(0,0,0,0);
+  if(preset.days) d.setDate(d.getDate()+preset.days);
+  if(preset.months) d.setMonth(d.getMonth()+preset.months);
+  return dateKey(d);
+}
+function catTrackBy(catName){const c=getCat(catName);return c&&c.trackBy==='weight'?'weight':'count';}
+function catNoExpiry(catName){const c=getCat(catName);return !!(c&&c.noExpiry);}
 function getWeekStart(offset){
   const d=new Date(); d.setHours(0,0,0,0);
   const day=d.getDay(); const monday=day===0?-6:1-day;
@@ -652,16 +672,53 @@ function dateKey(d){return d.toISOString().slice(0,10);}
 function avatarColor(letter){const i=letter.charCodeAt(0)%AVATAR_COLORS.length;return AVATAR_COLORS[i];}
 
 // ─── ACTIONS: INVENTORY ───────────────────────────────────────────────────
-function addOrUpdateItem(fd){
-  const name=(fd.get('name')||'').trim(); if(!name) return;
-  const item={id:ui.editingItemId||uid(),name,
-    category:fd.get('category'),location:fd.get('location'),
-    quantity:parseFloat(fd.get('quantity'))||0,unit:(fd.get('unit')||'').trim(),
-    threshold:parseFloat(fd.get('threshold'))||0,expiresOn:fd.get('expiresOn')||'',
-    emoji:(fd.get('emoji')||'').trim()||null};
-  if(ui.editingItemId){const i=state.inventory.findIndex(x=>x.id===ui.editingItemId);if(i>-1)state.inventory[i]=item;}
-  else state.inventory.push(item);
-  ui.showAddItem=false;ui.editingItemId=null;saveInv();render();
+function freshItemRow(existingItem){
+  if(existingItem){
+    return {rowId:uid(),existingId:existingItem.id,name:existingItem.name,
+      category:existingItem.category,location:existingItem.location||'Fridge',
+      quantity:String(existingItem.quantity??''),unit:existingItem.unit||'',
+      threshold:String(existingItem.threshold??''),
+      expiryMode:existingItem.expiryMode==='never'?'never':(existingItem.expiresOn?'date':'unset'),
+      expiresOn:existingItem.expiresOn||'',expiryTouched:true,
+      emoji:existingItem.emoji||''};
+  }
+  const cat=state.settings.categories[0];
+  const name=cat?cat.name:'';
+  return {rowId:uid(),existingId:null,name:'',category:name,location:'Fridge',
+    quantity:'',unit:'',threshold:'',
+    expiryMode:catNoExpiry(name)?'never':'unset',expiresOn:'',expiryTouched:false,emoji:''};
+}
+function validateItemRow(row){
+  if(!row.name||!row.name.trim()) return 'Name is required';
+  if(!row.category) return 'Category is required';
+  if(row.quantity===''||row.quantity===null||isNaN(parseFloat(row.quantity))) return 'Quantity is required';
+  if(!row.unit||!row.unit.trim()) return 'Unit is required';
+  return null;
+}
+function saveItemRows(){
+  for(let i=0;i<ui.itemFormRows.length;i++){
+    const err=validateItemRow(ui.itemFormRows[i]);
+    if(err){ui.batchFormError='Row '+(i+1)+': '+err;render();return;}
+  }
+  ui.itemFormRows.forEach(row=>{
+    const item={
+      id:row.existingId||uid(),name:row.name.trim(),
+      category:row.category,location:row.location||'Fridge',
+      quantity:parseFloat(row.quantity)||0,unit:row.unit.trim(),
+      threshold:row.threshold===''?0:(parseFloat(row.threshold)||0),
+      expiresOn:row.expiryMode==='date'?(row.expiresOn||''):'',
+      expiryMode:row.expiryMode==='never'?'never':undefined,
+      emoji:(row.emoji||'').trim()||null
+    };
+    if(row.existingId){
+      const i=state.inventory.findIndex(x=>x.id===row.existingId);
+      if(i>-1) state.inventory[i]=item; else state.inventory.push(item);
+    } else {
+      state.inventory.push(item);
+    }
+  });
+  ui.showAddItem=false;ui.editingItemId=null;ui.itemFormRows=[];ui.batchFormError='';
+  saveInv();render();
 }
 function deleteItem(id){state.inventory=state.inventory.filter(i=>i.id!==id);saveInv();render();}
 function adjustQty(id,delta){
@@ -828,12 +885,13 @@ function addWeekMissingToGrocery(){
 function addCategory(){
   const name=ui.newCatName.trim();if(!name)return;
   state.settings.categories.push({id:uid(),name,emoji:ui.newCatEmoji,color:ui.newCatColor,
-    bg:ui.newCatColor+'22'});
-  saveSettings();ui.showAddCat=false;ui.newCatName='';ui.newCatEmoji='🍽';render();
+    bg:ui.newCatColor+'22',trackBy:ui.newCatTrackBy,noExpiry:ui.newCatNoExpiry});
+  saveSettings();ui.showAddCat=false;ui.newCatName='';ui.newCatEmoji='🍽';ui.newCatTrackBy='count';ui.newCatNoExpiry=false;render();
 }
 function saveEditCat(){
   const cat=state.settings.categories.find(c=>c.id===ui.editCatId);if(!cat)return;
   cat.name=ui.editCatName;cat.emoji=ui.editCatEmoji;cat.color=ui.editCatColor;cat.bg=ui.editCatColor+'22';
+  cat.trackBy=ui.editCatTrackBy;cat.noExpiry=ui.editCatNoExpiry;
   saveSettings();ui.editCatId=null;render();
 }
 function deleteCategory(id){
@@ -1793,7 +1851,7 @@ function renderKitchen(){
 
 function renderItemRow(item,cat){
   const low=isLow(item);
-  const exp=item.expiresOn?expiryLabel(item.expiresOn):'';
+  const exp=item.expiryMode==='never'?'♾ no expiry':(item.expiresOn?expiryLabel(item.expiresOn):'');
   const metaParts=[h(item.location)]; if(exp) metaParts.push(exp);
   const emoji=item.emoji||guessItemEmoji(item.name)||cat.emoji;
   return '<div class="item-row" style="border-left-color:'+cat.color+';">'+
@@ -1813,33 +1871,70 @@ function renderItemRow(item,cat){
   '</div>';
 }
 
+function renderItemFormRow(row,idx,isEdit){
+  const catOptions=state.settings.categories.map(c=>'<option value="'+h(c.name)+'" '+(c.name===row.category?'selected':'')+'>'+c.emoji+' '+h(c.name)+'</option>').join('');
+  const locOptions=LOCATIONS.map(l=>'<option value="'+l+'" '+(l===row.location?'selected':'')+'>'+l+'</option>').join('');
+  const trackBy=catTrackBy(row.category);
+  const qtyField=trackBy==='count'
+    ?'<div class="field"><label>Quantity</label><div style="display:flex;align-items:center;gap:6px;">'+
+        '<button type="button" class="qty-btn" data-action="adj-row-qty" data-row="'+idx+'" data-delta="-1">−</button>'+
+        '<input type="number" name="row-qty" min="0" step="1" value="'+h(row.quantity)+'" data-live="row-qty" data-row="'+idx+'" style="width:60px;text-align:center;">'+
+        '<button type="button" class="qty-btn" data-action="adj-row-qty" data-row="'+idx+'" data-delta="1">+</button>'+
+      '</div></div>'
+    :'<div class="field"><label>Quantity</label><input type="number" name="row-qty" min="0" step="any" value="'+h(row.quantity)+'" data-live="row-qty" data-row="'+idx+'" placeholder="e.g. 2.27"></div>';
+  const unitListId=trackBy==='count'?'unit-dl-count':'unit-dl-weight';
+  const expiryMode=row.expiryMode==='never'?'never':'date';
+  const dateChips=DURATION_PRESETS.map((p,pi)=>'<button type="button" class="pill-btn" style="font-size:11px;padding:4px 10px;" data-action="pick-row-duration" data-row="'+idx+'" data-preset="'+pi+'">'+p.label+'</button>').join('');
+  const expirySection=
+    '<div class="field" style="grid-column:span 2;">'+
+      '<label>Expires</label>'+
+      '<div style="display:flex;gap:8px;margin-bottom:8px;">'+
+        '<button type="button" class="pill-btn '+(expiryMode==='date'?'active':'')+'" data-action="set-row-expiry-mode" data-row="'+idx+'" data-mode="date">📅 Set a date</button>'+
+        '<button type="button" class="pill-btn '+(expiryMode==='never'?'active':'')+'" data-action="set-row-expiry-mode" data-row="'+idx+'" data-mode="never">♾ Doesn\'t expire</button>'+
+      '</div>'+
+      (expiryMode==='date'?
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">'+dateChips+'</div>'+
+        '<input type="date" name="row-expires-on" value="'+h(row.expiresOn)+'" data-live="row-expires-on" data-row="'+idx+'" style="max-width:180px;">'
+        :'<div style="font-size:12px;color:var(--ink-soft);font-weight:600;">This item won\'t trigger USE SOON alerts.</div>')+
+    '</div>';
+  const removeBtn=(!isEdit)?'<button type="button" class="btn-ghost" data-action="remove-batch-row" data-row="'+idx+'" style="color:var(--orange);margin-left:auto;">✕ Remove row</button>':'';
+  return (
+    '<div class="form-card" style="margin-bottom:14px;">'+
+      (!isEdit?'<div style="display:flex;align-items:center;margin-bottom:8px;"><span style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);">Item '+(idx+1)+'</span>'+removeBtn+'</div>':'')+
+      '<div class="form-grid">'+
+        '<div class="field"><label>Name *</label><input name="row-name" required value="'+h(row.name)+'" placeholder="e.g. Greek yogurt" data-live="row-name" data-row="'+idx+'"></div>'+
+        '<div class="field" style="max-width:90px;"><label>Emoji</label><input name="row-emoji" id="item-emoji-input-'+idx+'" value="'+h(row.emoji||'')+'" placeholder="'+(guessItemEmoji(row.name)||getCat(row.category).emoji)+'" data-live="row-emoji" data-row="'+idx+'" style="font-size:18px;text-align:center;"></div>'+
+        '<div class="field"><label>Category *</label><select name="row-category" id="item-cat-select-'+idx+'" data-change="row-cat" data-row="'+idx+'">'+catOptions+'</select></div>'+
+        '<div class="field"><label>Location</label><select name="row-location" data-change="row-loc" data-row="'+idx+'">'+locOptions+'</select></div>'+
+        qtyField+
+        '<div class="field"><label>Unit *</label><input name="row-unit" list="'+unitListId+'" value="'+h(row.unit)+'" placeholder="'+(trackBy==='count'?'pcs, cans…':'g, lb…')+'" data-live="row-unit" data-row="'+idx+'"></div>'+
+        '<div class="field"><label>Low stock at</label><input type="number" name="row-threshold" min="0" step="any" value="'+h(row.threshold)+'" data-live="row-threshold" data-row="'+idx+'" placeholder="optional"></div>'+
+        expirySection+
+      '</div>'+
+    '</div>'
+  );
+}
 function renderItemFormModal(){
-  const editing=ui.editingItemId?state.inventory.find(i=>i.id===ui.editingItemId):null;
-  const v=editing||{name:'',category:state.settings.categories[0]?.name||'Produce',location:'Fridge',quantity:1,unit:'',threshold:1,expiresOn:''};
-  const catOptions=state.settings.categories.map(c=>'<option value="'+h(c.name)+'" '+(c.name===v.category?'selected':'')+'>'+c.emoji+' '+h(c.name)+'</option>').join('');
-  const locOptions=LOCATIONS.map(l=>'<option value="'+l+'" '+(l===v.location?'selected':'')+'>'+l+'</option>').join('');
+  const isEdit=!!ui.editingItemId;
+  const rows=ui.itemFormRows;
+  const rowsHtml=rows.map((row,idx)=>renderItemFormRow(row,idx,isEdit)).join('');
+  const errorHtml=ui.batchFormError?'<div style="color:var(--orange);font-size:13px;font-weight:700;margin-bottom:10px;">'+h(ui.batchFormError)+'</div>':'';
+  const addRowBtn=!isEdit?'<button type="button" class="btn btn-secondary" data-action="add-batch-row" style="margin-bottom:14px;">+ Add another item</button>':'';
+  const saveLabel=isEdit?'Save changes':'Add '+rows.length+' item'+(rows.length===1?'':'s')+' to kitchen';
   return (
     '<div class="modal-overlay" id="pp-modal-overlay">'+
-      '<div class="modal-sheet">'+
+      '<div class="modal-sheet'+(isEdit?'':' modal-sheet-large')+'">'+
         '<button class="modal-close" data-action="cancel-add-item">×</button>'+
-        '<div class="modal-title" style="margin-bottom:16px;">'+(editing?'Edit item':'Add item')+'</div>'+
-        '<form class="form-card" data-form="add-item" style="padding:0;border:none;">'+
-          '<div class="form-grid">'+
-            '<div class="field"><label>Name</label><input name="name" required value="'+h(v.name)+'" placeholder="e.g. Greek yogurt" '+(editing?'':'data-live="item-name-auto"')+'></div>'+
-            '<div class="field" style="max-width:90px;"><label>Emoji</label><input name="emoji" id="item-emoji-input" value="'+h(v.emoji||'')+'" placeholder="'+(guessItemEmoji(v.name)||getCat(v.category).emoji)+'" style="font-size:18px;text-align:center;"></div>'+
-            '<div class="field"><label>Category</label><select name="category" id="item-cat-select" data-change="item-cat" '+(editing?'data-touched="1"':'')+'>'+catOptions+'</select></div>'+
-            '<div class="field"><label>Location</label><select name="location">'+locOptions+'</select></div>'+
-            '<div class="field"><label>Quantity</label><input type="number" name="quantity" min="0" step="any" value="'+h(v.quantity)+'"></div>'+
-            '<div class="field"><label>Unit</label><input name="unit" list="unit-dl" value="'+h(v.unit)+'" placeholder="pcs, g…"></div>'+
-            '<div class="field"><label>Low stock at</label><input type="number" name="threshold" min="0" step="any" value="'+h(v.threshold)+'"></div>'+
-            '<div class="field"><label>Expires on</label><input type="date" name="expiresOn" value="'+h(v.expiresOn)+'"></div>'+
-          '</div>'+
-          '<datalist id="unit-dl">'+UNIT_LIST.map(u=>'<option value="'+u+'">').join('')+'</datalist>'+
-          '<div class="form-actions">'+
-            '<button type="submit" class="btn btn-primary">'+(editing?'Save changes':'Add to kitchen')+'</button>'+
-            '<button type="button" class="btn btn-secondary" data-action="cancel-add-item">Cancel</button>'+
-          '</div>'+
-        '</form>'+
+        '<div class="modal-title" style="margin-bottom:16px;">'+(isEdit?'Edit item':'Add item(s)')+'</div>'+
+        rowsHtml+
+        addRowBtn+
+        '<datalist id="unit-dl-weight">'+WEIGHT_UNITS.map(u=>'<option value="'+u+'">').join('')+'</datalist>'+
+        '<datalist id="unit-dl-count">'+COUNT_UNITS.map(u=>'<option value="'+u+'">').join('')+'</datalist>'+
+        errorHtml+
+        '<div class="form-actions">'+
+          '<button type="button" class="btn btn-primary" data-action="save-item-rows">'+saveLabel+'</button>'+
+          '<button type="button" class="btn btn-secondary" data-action="cancel-add-item">Cancel</button>'+
+        '</div>'+
       '</div>'+
     '</div>'
   );
@@ -2728,6 +2823,19 @@ function renderSettings(){
   return '<div class="settings-nav">'+nav+'</div>'+body;
 }
 
+function renderCatDefaultsControl(trackBy,noExpiry,prefix){
+  return '<div style="margin:12px 0;">'+
+    '<label style="display:block;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);margin-bottom:6px;">New items in this category default to</label>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">'+
+      '<button type="button" class="pill-btn '+(trackBy==='count'?'active':'')+'" data-action="set-'+prefix+'-cat-trackby" data-val="count">🔢 Counted (pcs, cans...)</button>'+
+      '<button type="button" class="pill-btn '+(trackBy==='weight'?'active':'')+'" data-action="set-'+prefix+'-cat-trackby" data-val="weight">⚖ Weighed (g, lb...)</button>'+
+    '</div>'+
+    '<label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;font-weight:700;cursor:pointer;">'+
+      '<input type="checkbox" data-action="toggle-'+prefix+'-cat-noexpiry" '+(noExpiry?'checked':'')+' style="width:auto;margin:0;" onclick="event.stopPropagation()">'+
+      'Items in this category usually don\'t expire'+
+    '</label>'+
+  '</div>';
+}
 function renderSettingsCats(){
   const cats=state.settings.categories;
   const list=cats.map(cat=>{
@@ -2752,6 +2860,7 @@ function renderSettingsCats(){
           '</div>'+
           '<div class="emoji-picker">'+emojiPicks+'</div>'+
           '<div class="color-swatches">'+swatches+'</div>'+
+          renderCatDefaultsControl(ui.editCatTrackBy,ui.editCatNoExpiry,'edit')+
           '<div class="form-actions">'+
             '<button class="btn btn-primary" data-action="save-edit-cat">Save</button>'+
             '<button class="btn btn-secondary" data-action="cancel-edit-cat">Cancel</button>'+
@@ -2768,6 +2877,7 @@ function renderSettingsCats(){
     '</div>'+
     '<div class="emoji-picker">'+EMOJI_PALETTE.map(em=>'<button type="button" class="emoji-pick-btn '+(ui.newCatEmoji===em?'selected':'')+'" data-action="pick-new-cat-emoji" data-emoji="'+em+'">'+em+'</button>').join('')+'</div>'+
     '<div class="color-swatches">'+SWATCH_COLORS.map(sc=>'<button type="button" class="color-swatch '+(ui.newCatColor===sc?'selected':'')+'" aria-label="'+sc+'" style="background:'+sc+';" data-action="set-new-cat-color" data-val="'+sc+'"></button>').join('')+'</div>'+
+    renderCatDefaultsControl(ui.newCatTrackBy,ui.newCatNoExpiry,'new')+
     '<div class="form-actions">'+
       '<button class="btn btn-primary" data-action="add-category">Add category</button>'+
       '<button class="btn btn-secondary" data-action="cancel-add-cat">Cancel</button>'+
@@ -3307,9 +3417,15 @@ document.addEventListener('click',e=>{
     // nav
     case 'set-tab': ui.tab=a.tab; if(a.tab==='cook'&&ui.recipeStatus==='idle') ui.tab='cook'; render(); break;
     // kitchen
-    case 'open-add-item': ui.showAddItem=true;ui.editingItemId=null;render();break;
-    case 'cancel-add-item': ui.showAddItem=false;ui.editingItemId=null;render();break;
-    case 'edit-item':{const item=state.inventory.find(i=>i.id===a.id);if(item){ui.editingItemId=a.id;ui.showAddItem=true;render();}}break;
+    case 'open-add-item': ui.showAddItem=true;ui.editingItemId=null;ui.itemFormRows=[freshItemRow()];ui.batchFormError='';render();break;
+    case 'cancel-add-item': ui.showAddItem=false;ui.editingItemId=null;ui.itemFormRows=[];ui.batchFormError='';render();break;
+    case 'edit-item':{const item=state.inventory.find(i=>i.id===a.id);if(item){ui.editingItemId=a.id;ui.showAddItem=true;ui.itemFormRows=[freshItemRow(item)];ui.batchFormError='';render();}}break;
+    case 'add-batch-row': ui.itemFormRows.push(freshItemRow());render();break;
+    case 'remove-batch-row':{const idx=Number(a.row);if(ui.itemFormRows.length>1) ui.itemFormRows.splice(idx,1);render();}break;
+    case 'save-item-rows': saveItemRows();break;
+    case 'set-row-expiry-mode':{const row=ui.itemFormRows[Number(a.row)];if(row){row.expiryMode=a.mode;row.expiryTouched=true;if(a.mode==='never')row.expiresOn='';render();}}break;
+    case 'pick-row-duration':{const row=ui.itemFormRows[Number(a.row)];const preset=DURATION_PRESETS[Number(a.preset)];if(row&&preset){row.expiresOn=addDurationToToday(preset);row.expiryMode='date';row.expiryTouched=true;render();}}break;
+    case 'adj-row-qty':{const row=ui.itemFormRows[Number(a.row)];if(row){const cur=parseFloat(row.quantity)||0;row.quantity=String(Math.max(0,cur+Number(a.delta)));render();}}break;
     case 'delete-item': if(confirm('Remove '+( state.inventory.find(i=>i.id===a.id)?.name||'this item')+'?')){deleteItem(a.id);}break;
     case 'adj-qty': adjustQty(a.id,Number(a.delta));break;
     case 'quick-add-grocery':{const item=state.inventory.find(i=>i.id===a.id);if(item){addGroceryItem(item.name,item.category,'',true);saveGrocery();render();}}break;
@@ -3481,7 +3597,11 @@ document.addEventListener('click',e=>{
       break;
     // settings
     case 'set-settings-section': ui.settingsSection=a.val;render();break;
-    case 'start-edit-cat':{const cat=state.settings.categories.find(c=>c.id===a.id);if(cat){ui.editCatId=a.id;ui.editCatName=cat.name;ui.editCatEmoji=cat.emoji;ui.editCatColor=cat.color;render();}}break;
+    case 'start-edit-cat':{const cat=state.settings.categories.find(c=>c.id===a.id);if(cat){ui.editCatId=a.id;ui.editCatName=cat.name;ui.editCatEmoji=cat.emoji;ui.editCatColor=cat.color;ui.editCatTrackBy=cat.trackBy||'count';ui.editCatNoExpiry=!!cat.noExpiry;render();}}break;
+    case 'set-edit-cat-trackby': ui.editCatTrackBy=a.val;render();break;
+    case 'toggle-edit-cat-noexpiry': ui.editCatNoExpiry=!ui.editCatNoExpiry;render();break;
+    case 'set-new-cat-trackby': ui.newCatTrackBy=a.val;render();break;
+    case 'toggle-new-cat-noexpiry': ui.newCatNoExpiry=!ui.newCatNoExpiry;render();break;
     case 'cancel-edit-cat': ui.editCatId=null;render();break;
     case 'save-edit-cat':{
       const n=document.getElementById('edit-cat-name');const em=document.getElementById('edit-cat-emoji');
@@ -3553,12 +3673,19 @@ document.addEventListener('input',e=>{
     const preview=document.getElementById('grocery-cat-preview');
     if(preview){preview.textContent=cat.emoji+' '+guess;preview.style.background=cat.bg;preview.style.color=cat.color;}
   }
-  else if(live==='item-name-auto'){
-    const sel=document.getElementById('item-cat-select');
-    if(sel&&!sel.dataset.touched){sel.value=guessCategory(el.value);}
-    const emojiInput=document.getElementById('item-emoji-input');
-    if(emojiInput){emojiInput.placeholder=guessItemEmoji(el.value)||getCat(sel?sel.value:'Other').emoji;}
+  else if(live==='row-name'){
+    const idx=Number(el.dataset.row);const row=ui.itemFormRows[idx];if(!row)return;
+    row.name=el.value;
+    const sel=document.getElementById('item-cat-select-'+idx);
+    if(sel&&!row.categoryTouched){const guess=guessCategory(el.value);row.category=guess;sel.value=guess;}
+    const emojiInput=document.getElementById('item-emoji-input-'+idx);
+    if(emojiInput){emojiInput.placeholder=guessItemEmoji(el.value)||getCat(row.category).emoji;}
   }
+  else if(live==='row-emoji'){const row=ui.itemFormRows[Number(el.dataset.row)];if(row)row.emoji=el.value;}
+  else if(live==='row-qty'){const row=ui.itemFormRows[Number(el.dataset.row)];if(row)row.quantity=el.value;}
+  else if(live==='row-unit'){const row=ui.itemFormRows[Number(el.dataset.row)];if(row)row.unit=el.value;}
+  else if(live==='row-threshold'){const row=ui.itemFormRows[Number(el.dataset.row)];if(row)row.threshold=el.value;}
+  else if(live==='row-expires-on'){const row=ui.itemFormRows[Number(el.dataset.row)];if(row){row.expiresOn=el.value;row.expiryTouched=true;}}
   else if(live==='new-store'){ui.newStore=el.value;}
   else if(live==='new-cuisine'){ui.newCuisine=el.value;}
   else if(live==='household-name'){ui.householdEdit=el.value;}
@@ -3593,7 +3720,13 @@ document.addEventListener('change',e=>{
   else if(ch==='cook-cuisine'){ui.cookFilters.cuisine=el.value;render();}
   else if(ch==='cook-time'){ui.cookFilters.maxTime=el.value;}
   else if(ch==='cook-prefer-have'){ui.cookFilters.preferHave=el.checked;}
-  else if(ch==='item-cat') {const sel=document.getElementById('item-cat-select');if(sel)sel.dataset.touched='1';}
+  else if(ch==='row-cat'){
+    const idx=Number(el.dataset.row);const row=ui.itemFormRows[idx];if(!row)return;
+    row.category=el.value;row.categoryTouched=true;
+    if(!row.expiryTouched){row.expiryMode=catNoExpiry(row.category)?'never':'unset';row.expiresOn='';}
+    render();
+  }
+  else if(ch==='row-loc'){const row=ui.itemFormRows[Number(el.dataset.row)];if(row)row.location=el.value;}
   else if(ch==='signup-invite-check'){ checkSignupInvite(el.value.trim()); }
   else if(ch==='accent-custom'){ setAccentColor(el.value); }
 });
@@ -3602,8 +3735,7 @@ document.addEventListener('submit',e=>{
   e.preventDefault();
   const form=e.target.closest('[data-form]');if(!form)return;
   const fd=new FormData(form);
-  if(form.dataset.form==='add-item'){addOrUpdateItem(fd);}
-  else if(form.dataset.form==='add-grocery'){
+  if(form.dataset.form==='add-grocery'){
     addGroceryItem((fd.get('name')||'').trim(),fd.get('category')||'Other',(fd.get('note')||'').trim(),false,(fd.get('quantity')||'').trim(),(fd.get('store')||'').trim(),fd.get('priority')||'normal');
     ui.showAddGrocery=false;saveGrocery();render();
   }
