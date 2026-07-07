@@ -441,6 +441,15 @@ const EMOJI_PALETTE = [
   '🍕','🌮','🌯','🍣','🍲','🥗','🍽','📦'
 ];
 
+// Quick-pick options for individual kitchen item emojis (add/edit item form).
+const ITEM_EMOJI_PALETTE = [
+  '🥦','🥕','🥬','🍅','🥔','🧅','🧄','🌽','🥑','🍆','🍄',
+  '🍎','🍌','🍊','🍋','🍇','🍓','🍉','🍑','🍍','🥝',
+  '🥛','🧀','🧈','🥚','🍗','🥩','🥓','🐟',
+  '🍞','🍝','🥫',
+  '🧂','🍯','🍦','🍫','🍪','☕'
+];
+
 // ─── STORAGE / API ───────────────────────────────────────────────────────
 let authToken = localStorage.getItem('pp-token');
 
@@ -685,13 +694,13 @@ function freshItemRow(existingItem){
       threshold:String(existingItem.threshold??''),
       expiryMode:existingItem.expiryMode==='never'?'never':(existingItem.expiresOn?'date':'unset'),
       expiresOn:existingItem.expiresOn||'',expiryTouched:true,
-      emoji:existingItem.emoji||''};
+      emoji:existingItem.emoji||'',emojiPickerOpen:false};
   }
   const cat=state.settings.categories[0];
   const name=cat?cat.name:'';
   return {rowId:uid(),existingId:null,name:'',category:name,location:'Fridge',
     quantity:'',unit:'',threshold:'',
-    expiryMode:catNoExpiry(name)?'never':'unset',expiresOn:'',expiryTouched:false,emoji:''};
+    expiryMode:catNoExpiry(name)?'never':'unset',expiresOn:'',expiryTouched:false,emoji:'',emojiPickerOpen:false};
 }
 function validateItemRow(row){
   if(!row.name||!row.name.trim()) return 'Name is required';
@@ -1916,7 +1925,14 @@ function renderItemFormRow(row,idx,isEdit){
       (!isEdit?'<div style="display:flex;align-items:center;margin-bottom:8px;"><span style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);">Item '+(idx+1)+'</span>'+removeBtn+'</div>':'')+
       '<div class="form-grid">'+
         '<div class="field"><label>Name *</label><input name="row-name" required value="'+h(row.name)+'" placeholder="e.g. Greek yogurt" data-live="row-name" data-row="'+idx+'"></div>'+
-        '<div class="field" style="max-width:90px;"><label>Emoji</label><input name="row-emoji" id="item-emoji-input-'+idx+'" value="'+h(row.emoji||'')+'" placeholder="'+(guessItemEmoji(row.name)||getCat(row.category).emoji)+'" data-live="row-emoji" data-row="'+idx+'" style="font-size:18px;text-align:center;"></div>'+
+        '<div class="field" style="max-width:120px;">'+
+          '<label>Emoji</label>'+
+          '<div style="display:flex;gap:4px;">'+
+            '<input name="row-emoji" id="item-emoji-input-'+idx+'" value="'+h(row.emoji||'')+'" placeholder="'+(guessItemEmoji(row.name)||getCat(row.category).emoji)+'" data-live="row-emoji" data-row="'+idx+'" style="font-size:18px;text-align:center;width:100%;">'+
+            '<button type="button" class="btn-ghost" data-action="toggle-row-emoji-picker" data-row="'+idx+'" title="Pick an emoji" style="flex-shrink:0;">▾</button>'+
+          '</div>'+
+          (row.emojiPickerOpen?'<div class="emoji-picker">'+ITEM_EMOJI_PALETTE.map(em=>'<button type="button" class="emoji-pick-btn '+(row.emoji===em?'selected':'')+'" data-action="pick-row-emoji" data-row="'+idx+'" data-emoji="'+em+'">'+em+'</button>').join('')+'</div>':'')+
+        '</div>'+
         '<div class="field"><label>Category *</label><select name="row-category" id="item-cat-select-'+idx+'" data-change="row-cat" data-row="'+idx+'">'+catOptions+'</select></div>'+
         '<div class="field"><label>Location</label><select name="row-location" data-change="row-loc" data-row="'+idx+'">'+locOptions+'</select></div>'+
         '<div id="qty-field-'+idx+'" style="display:contents;">'+qtyField+'</div>'+
@@ -3439,6 +3455,8 @@ document.addEventListener('click',e=>{
     case 'set-row-expiry-mode':{const row=ui.itemFormRows[Number(a.row)];if(row){row.expiryMode=a.mode;row.expiryTouched=true;if(a.mode==='never')row.expiresOn='';render();}}break;
     case 'pick-row-duration':{const row=ui.itemFormRows[Number(a.row)];const preset=DURATION_PRESETS[Number(a.preset)];if(row&&preset){row.expiresOn=addDurationToToday(preset);row.expiryMode='date';row.expiryTouched=true;render();}}break;
     case 'adj-row-qty':{const row=ui.itemFormRows[Number(a.row)];if(row){const cur=parseFloat(row.quantity)||0;row.quantity=String(Math.max(0,cur+Number(a.delta)));render();}}break;
+    case 'toggle-row-emoji-picker':{const row=ui.itemFormRows[Number(a.row)];if(row){row.emojiPickerOpen=!row.emojiPickerOpen;render();}}break;
+    case 'pick-row-emoji':{const row=ui.itemFormRows[Number(a.row)];if(row){row.emoji=a.emoji;row.emojiPickerOpen=false;render();}}break;
     case 'delete-item': if(confirm('Remove '+( state.inventory.find(i=>i.id===a.id)?.name||'this item')+'?')){deleteItem(a.id);}break;
     case 'adj-qty': adjustQty(a.id,Number(a.delta));break;
     case 'quick-add-grocery':{const item=state.inventory.find(i=>i.id===a.id);if(item){addGroceryItem(item.name,item.category,'',true);saveGrocery();render();}}break;
