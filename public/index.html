@@ -603,13 +603,15 @@ let ui={
   grocerySearch:'', groceryGroup:'category', groceryStore:'All', showChecked:false,
   showAddGrocery:false, groceryQuickCat:'Other', groceryQuickCatBg:'#E2DCCB', groceryQuickCatColor:'#6B7160', groceryQuickEmoji:'📦',
   // cook
-  cookFilters:{mealType:'Any',cuisine:'Any',customCuisine:'',maxTime:'any',preferHave:false,notes:''},
+  cookFilters:{mealType:'Any',cuisine:'Any',customCuisine:'',maxTime:'any',preferHave:false,notes:'',ingredients:[]},
+  cookKitchenPickerOpen:false,
   recipeStatus:'idle', recipes:[], recipeError:'',
   // cookbook
   cbSearch:'', cbMealFilter:'All', cbCanMake:false, cbFav:false, showAddCookbook:false,
   // planner
   plannerWeekOffset:0, plannerModal:null, // {date,slot}
   plannerSearch:'', plannerShowCreate:false, plannerMealFilter:'All', plannerShowLimit:40,
+  plannerGenerating:false, plannerGenerateError:'',
   // recipe browser (within planner tab)
   browserSearch:'', browserMealFilter:'All',
   browserShowAddForm:false, generatingRandom:false, generateError:'',
@@ -830,6 +832,31 @@ async function suggestSide(mainRecipe){
     ui.sideError=lastApiStatus===402?'You\'re out of AI credits. Buy more in Settings → Household & Account.':'Couldn\'t suggest a side right now. Try again.';
   }
   ui.suggestingSideFor=null;
+  render();
+}
+async function generatePlannerRecipe(title,slot,date){
+  if(!title||ui.plannerGenerating) return;
+  ui.plannerGenerating=true;ui.plannerGenerateError='';render();
+  const inventory=state.inventory.map(i=>i.name+(i.quantity?' ('+i.quantity+(i.unit?' '+i.unit:'')+')':'')).join(', ');
+  const system='You are the recipe engine inside a home kitchen app called PantryPal. The user wants a recipe titled "'+title+'" for '+slot+'. Given the kitchen inventory, generate that ONE recipe. Respond ONLY with a raw JSON object (no markdown, no commentary): {"title":string,"cuisine":string,"mealType":string,"totalTimeMinutes":number,"servings":number,"description":string,"spiceLevel":string,"ingredients":[{"name":string,"quantity":string,"have":boolean}],"steps":[string],"missingIngredients":[string],"usesLowStock":[string]}. Mark ingredient have:true if it fuzzy-matches the inventory. Keep the title close to what the user typed. Keep steps to 4-6 imperative sentences under 15 words.';
+  const payload={title,mealType:slot,inventory};
+  try{
+    const data=await api('POST','generate-recipe',{max_tokens:1200,system,messages:[{role:'user',content:JSON.stringify(payload)}]});
+    if(!data) throw new Error('request failed');
+    let text=(data.content||[]).find(b=>b.type==='text')?.text||'';
+    text=text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+    const gen=JSON.parse(text);
+    if(!gen.title) throw new Error('empty');
+    const recipe={...gen,id:uid(),missingIngredients:gen.missingIngredients||[],usesLowStock:gen.usesLowStock||[],tags:[],dateAdded:new Date().toISOString()};
+    saveRecipe(recipe);
+    noteCreditSpent();
+    ui.plannerShowCreate=false;ui.plannerSearch='';
+    commitPlannerMeal(date,slot,recipe.title);
+  }catch(e){
+    console.error(e);
+    ui.plannerGenerateError=lastApiStatus===402?'You\'re out of AI credits. Buy more in Settings → Household & Account.':'Couldn\'t generate that recipe. Try again.';
+  }
+  ui.plannerGenerating=false;
   render();
 }
 function deleteCookbookItem(id){state.cookbook=state.cookbook.filter(r=>r.id!==id);saveCookbook();render();}
@@ -1534,8 +1561,12 @@ function renderPlannerModalBody(){
           ?'<button data-action="planner-toggle-create" style="background:none;border:1.5px dashed var(--border);border-radius:10px;padding:10px 14px;cursor:pointer;font-size:13px;font-weight:800;color:var(--ink-soft);text-align:left;display:flex;align-items:center;gap:8px;">'+
               '<span style="font-size:16px;">✦</span> Create "'+h(q)+'" as a full recipe and save to cookbook'+
             '</button>'
-          :'')
-      +'</div>'
+          :'')+
+        '<button data-action="planner-generate-recipe" data-date="'+h(date)+'" data-slot="'+h(slot)+'" data-title="'+h(q)+'" '+(ui.plannerGenerating?'disabled':'')+' style="background:none;border:1.5px dashed var(--green);border-radius:10px;padding:10px 14px;cursor:pointer;font-size:13px;font-weight:800;color:var(--green);text-align:left;display:flex;align-items:center;gap:8px;">'+
+          (ui.plannerGenerating?'<span class="spinner" style="width:14px;height:14px;border-width:2px;margin:0;"></span> Generating…':'<span style="font-size:16px;">✨</span> Generate "'+h(q)+'" with AI')+
+        '</button>'+
+        (ui.plannerGenerateError?'<div class="error-card">'+h(ui.plannerGenerateError)+'</div>':'')+
+      '</div>'
     :'';
 
   const mealOpts=['Breakfast','Lunch','Dinner','Snack','Dessert'].map(m=>'<option value="'+m+'" '+(m===slot?'selected':'')+'>'+m+'</option>').join('');
@@ -2149,6 +2180,30 @@ function renderGroceryForm(){
 }
 
 // ─── RENDER: COOK ─────────────────────────────────────────────────────────
+function renderCookIngredientPicker(){
+  const f=ui.cookFilters;
+  const chips=(f.ingredients||[]).map(ing=>
+    '<span class="pill-btn active" style="display:inline-flex;align-items:center;gap:6px;">'+h(ing)+
+      '<button type="button" data-action="remove-cook-ingredient" data-val="'+h(ing)+'" style="background:none;border:none;color:inherit;cursor:pointer;font-weight:900;padding:0;">×</button>'+
+    '</span>'
+  ).join('');
+  const kitchenNames=[...new Set(state.inventory.map(i=>i.name))].filter(n=>!(f.ingredients||[]).some(x=>x.toLowerCase()===n.toLowerCase())).sort();
+  const kitchenDropdown=ui.cookKitchenPickerOpen
+    ?'<div class="emoji-picker" style="display:flex;flex-wrap:wrap;max-height:160px;">'+
+        (kitchenNames.length?kitchenNames.map(n=>'<button type="button" class="pill-btn" style="font-size:12px;" data-action="add-cook-ingredient-from-kitchen" data-val="'+h(n)+'">'+h(n)+'</button>').join(''):'<span style="font-size:12px;color:var(--ink-soft);padding:4px;">No more kitchen items to add.</span>')+
+      '</div>'
+    :'';
+  return '<div class="filter-field" style="flex:1 1 100%;">'+
+    '<label>Cook with these ingredients (optional)</label>'+
+    (chips?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">'+chips+'</div>':'')+
+    '<form data-form="add-cook-ingredient" style="display:flex;gap:8px;">'+
+      '<input id="cook-ingredient-input" name="ingredient" placeholder="e.g. chicken thighs" autocomplete="off" style="flex:1;">'+
+      '<button type="submit" class="btn btn-secondary">+ Add</button>'+
+      '<button type="button" class="btn btn-secondary" data-action="toggle-cook-kitchen-picker">🧊 From kitchen</button>'+
+    '</form>'+
+    kitchenDropdown+
+  '</div>';
+}
 function renderCook(){
   const f=ui.cookFilters;
   const cuisineList=['Any',...state.settings.cuisines,'Other'];
@@ -2164,6 +2219,7 @@ function renderCook(){
       '<div class="filter-field"><label>Max time</label><select data-change="cook-time">'+timeOpts+'</select></div>'+
       '<div class="filter-field" style="flex:2;"><label>Notes</label><input id="cook-notes" value="'+h(f.notes)+'" placeholder="allergies, cravings, dietary…"></div>'+
     '</div>'+
+    '<div class="filter-row">'+renderCookIngredientPicker()+'</div>'+
     '<label class="check-option">'+
       '<input type="checkbox" '+(f.preferHave?'checked':'')+' data-change="cook-prefer-have">'+
       'Prioritize using what I already have'+
@@ -2228,6 +2284,11 @@ function renderRecipeCard(r,idx){
 }
 
 // ─── RENDER: COOKBOOK ─────────────────────────────────────────────────────
+function recipeIngredientMatchCount(recipe,wantedIngredients){
+  if(!wantedIngredients.length) return 0;
+  const names=(recipe.ingredients||[]).map(i=>(i.name||String(i)).toLowerCase());
+  return wantedIngredients.filter(w=>names.some(n=>n.includes(w.toLowerCase()))).length;
+}
 function cookbookFiltered(){
   let books=state.cookbook.slice();
   if(ui.cbSearch){
@@ -2239,8 +2300,15 @@ function cookbookFiltered(){
   if(ui.cbMealFilter!=='All') books=books.filter(r=>r.mealType===ui.cbMealFilter);
   if(ui.cbCanMake)         books=books.filter(r=>{ const a=recipeAvailability(r); return !a||a.missing===0; });
   if(ui.cbFav)             books=books.filter(r=>r.favorite);
-  // Favorites always float to the top
-  books.sort((a,b)=>(b.favorite?1:0)-(a.favorite?1:0));
+  const wanted=ui.cookFilters.ingredients||[];
+  if(wanted.length){
+    books=books.filter(r=>recipeIngredientMatchCount(r,wanted)>0);
+    // Rank by how many of the picked ingredients each recipe uses, favorites as tiebreaker
+    books.sort((a,b)=>(recipeIngredientMatchCount(b,wanted)-recipeIngredientMatchCount(a,wanted))||((b.favorite?1:0)-(a.favorite?1:0)));
+  } else {
+    // Favorites always float to the top
+    books.sort((a,b)=>(b.favorite?1:0)-(a.favorite?1:0));
+  }
   return books;
 }
 function renderCookbookCards(){
@@ -2268,6 +2336,9 @@ function renderCookbook(){
         (canMakeCount>0?' · <span style="color:var(--green);font-weight:800;">✅ '+canMakeCount+' you can make right now</span>':'')+
       '</div>'
     :'';
+  const ingredientMatchLine=(ui.cookFilters.ingredients||[]).length
+    ?'<div style="font-size:13px;color:var(--green);font-weight:800;margin-bottom:14px;">🔍 Showing recipes using: '+ui.cookFilters.ingredients.map(h).join(', ')+'</div>'
+    :'';
   const mealFilterBtns=['All',...MEAL_TYPES_FILTER.slice(1)].map(m=>
     '<button class="pill-btn '+(ui.cbMealFilter===m?'active':'')+'" data-action="set-cb-meal" data-val="'+m+'">'+m+'</button>').join('');
   const canMakeBtn='<button class="pill-btn '+(ui.cbCanMake?'active':'')+'" data-action="toggle-cb-can-make">✅ Can make now</button>';
@@ -2280,7 +2351,7 @@ function renderCookbook(){
     '</button>'+
     lowCreditChip()+
   '</div>'+
-  statsLine+legend+
+  statsLine+ingredientMatchLine+legend+
   '<div class="toolbar" style="margin-bottom:12px;">'+
     '<div class="search-box" style="flex:1;"><span class="search-icon">🔍</span>'+
       '<input id="cb-search-input" data-live="cb-search" value="'+h(ui.cbSearch)+'" placeholder="Search cookbook…">'+
@@ -3400,14 +3471,18 @@ async function findRecipes(){
   const notesEl=document.getElementById('cook-notes');
   const actualCuisine=cuisine==='Other'&&customCuisineEl?customCuisineEl.value:cuisine;
   const actualNotes=notesEl?notesEl.value:f.notes;
+  const requiredIngredients=f.ingredients||[];
   const payload={
     inventory:state.inventory.map(i=>({name:i.name,quantity:i.quantity,unit:i.unit,location:i.location,low:isLow(i)})),
     groceryList:state.grocery.filter(g=>!g.checked).map(g=>g.name),
     mealType:f.mealType,cuisine:actualCuisine,
     maxTotalTimeMinutes:f.maxTime==='any'?null:Number(f.maxTime),
-    preferUseWhatIHave:!!f.preferHave,extraNotes:actualNotes
+    preferUseWhatIHave:!!f.preferHave,extraNotes:actualNotes,
+    requiredIngredients
   };
-  const system='You are the recipe engine inside a home kitchen app called PantryPal. Respond ONLY with a raw JSON array — no markdown fences, no commentary — of exactly 3 recipe objects: [{"title":string,"cuisine":string,"mealType":string,"prepTimeMinutes":number,"cookTimeMinutes":number,"totalTimeMinutes":number,"servings":number,"ingredients":[{"name":string,"quantity":string,"have":boolean}],"missingIngredients":[string],"steps":[string],"usesLowStock":[string],"tags":[string]}]. Mark ingredient have:true if it loosely matches the inventory (plurals, synonyms OK). Assume salt, pepper, oil, water always available. Honor mealType/cuisine/maxTotalTimeMinutes as hard filters when not Any/null. If preferUseWhatIHave, strongly favor recipes with few missing ingredients, especially using low-stock items. Keep steps to 4-6 imperative sentences each under 15 words. Respond with strict JSON only.';
+  const system='You are the recipe engine inside a home kitchen app called PantryPal. Respond ONLY with a raw JSON array — no markdown fences, no commentary — of exactly 3 recipe objects: [{"title":string,"cuisine":string,"mealType":string,"prepTimeMinutes":number,"cookTimeMinutes":number,"totalTimeMinutes":number,"servings":number,"ingredients":[{"name":string,"quantity":string,"have":boolean}],"missingIngredients":[string],"steps":[string],"usesLowStock":[string],"tags":[string]}]. Mark ingredient have:true if it loosely matches the inventory (plurals, synonyms OK). Assume salt, pepper, oil, water always available. Honor mealType/cuisine/maxTotalTimeMinutes as hard filters when not Any/null. If preferUseWhatIHave, strongly favor recipes with few missing ingredients, especially using low-stock items.'+
+    (requiredIngredients.length?' The user specifically wants to cook with these ingredients: '+requiredIngredients.join(', ')+'. Every recipe MUST use ALL of these as key components (not just garnish) — this is a hard requirement, more important than cuisine/notes preferences.':'')+
+    ' Keep steps to 4-6 imperative sentences each under 15 words. Respond with strict JSON only.';
   try{
     const data=await api('POST','generate-recipe',{max_tokens:2500,system,messages:[{role:'user',content:JSON.stringify(payload)}]});
     if(!data) throw new Error('request failed');
@@ -3494,6 +3569,11 @@ document.addEventListener('click',e=>{
     // cook
     case 'find-recipes': findRecipes();break;
     case 'use-what-i-have': ui.cookFilters.mealType='Any';ui.cookFilters.cuisine='Any';ui.cookFilters.maxTime='any';ui.cookFilters.preferHave=true;findRecipes();break;
+    case 'remove-cook-ingredient': ui.cookFilters.ingredients=ui.cookFilters.ingredients.filter(x=>x!==a.val);render();break;
+    case 'add-cook-ingredient-from-kitchen':
+      if(!ui.cookFilters.ingredients.some(x=>x.toLowerCase()===a.val.toLowerCase())) ui.cookFilters.ingredients.push(a.val);
+      render();break;
+    case 'toggle-cook-kitchen-picker': ui.cookKitchenPickerOpen=!ui.cookKitchenPickerOpen;render();break;
     case 'add-missing-grocery': addMissingToGrocery(Number(a.idx));break;
     case 'save-recipe':{const r=ui.recipes[Number(a.idx)];if(r){saveRecipe(r);render();}}break;
     case 'suggest-side':{const r=ui.recipes[Number(a.idx)];if(r) suggestSide(r);}break;
@@ -3551,6 +3631,7 @@ document.addEventListener('click',e=>{
       partialUpdate('planner-modal-body', renderPlannerModalBody());
       if(ui.plannerShowCreate) setTimeout(()=>{const t=document.getElementById('pr-title');if(t)t.focus();},0);
       break;
+    case 'planner-generate-recipe': generatePlannerRecipe(a.title,a.slot,a.date);break;
     case 'confirm-planner-meal':{
       // legacy path kept for safety
       const custInp=document.getElementById('planner-custom-input');
@@ -3775,7 +3856,12 @@ document.addEventListener('submit',e=>{
   e.preventDefault();
   const form=e.target.closest('[data-form]');if(!form)return;
   const fd=new FormData(form);
-  if(form.dataset.form==='add-grocery'){
+  if(form.dataset.form==='add-cook-ingredient'){
+    const val=(fd.get('ingredient')||'').trim();
+    if(val&&!ui.cookFilters.ingredients.some(x=>x.toLowerCase()===val.toLowerCase())) ui.cookFilters.ingredients.push(val);
+    render();
+  }
+  else if(form.dataset.form==='add-grocery'){
     addGroceryItem((fd.get('name')||'').trim(),fd.get('category')||'Other',(fd.get('note')||'').trim(),false,(fd.get('quantity')||'').trim(),(fd.get('store')||'').trim(),fd.get('priority')||'normal');
     ui.showAddGrocery=false;saveGrocery();render();
   }
