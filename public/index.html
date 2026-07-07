@@ -1871,22 +1871,25 @@ function renderItemRow(item,cat){
   '</div>';
 }
 
-function renderItemFormRow(row,idx,isEdit){
-  const catOptions=state.settings.categories.map(c=>'<option value="'+h(c.name)+'" '+(c.name===row.category?'selected':'')+'>'+c.emoji+' '+h(c.name)+'</option>').join('');
-  const locOptions=LOCATIONS.map(l=>'<option value="'+l+'" '+(l===row.location?'selected':'')+'>'+l+'</option>').join('');
+function renderQtyField(row,idx){
   const trackBy=catTrackBy(row.category);
-  const qtyField=trackBy==='count'
+  return trackBy==='count'
     ?'<div class="field"><label>Quantity</label><div style="display:flex;align-items:center;gap:6px;">'+
         '<button type="button" class="qty-btn" data-action="adj-row-qty" data-row="'+idx+'" data-delta="-1">−</button>'+
         '<input type="number" name="row-qty" min="0" step="1" value="'+h(row.quantity)+'" data-live="row-qty" data-row="'+idx+'" style="width:60px;text-align:center;">'+
         '<button type="button" class="qty-btn" data-action="adj-row-qty" data-row="'+idx+'" data-delta="1">+</button>'+
       '</div></div>'
     :'<div class="field"><label>Quantity</label><input type="number" name="row-qty" min="0" step="any" value="'+h(row.quantity)+'" data-live="row-qty" data-row="'+idx+'" placeholder="e.g. 2.27"></div>';
+}
+function renderUnitField(row,idx){
+  const trackBy=catTrackBy(row.category);
   const unitListId=trackBy==='count'?'unit-dl-count':'unit-dl-weight';
+  return '<div class="field"><label>Unit *</label><input name="row-unit" list="'+unitListId+'" value="'+h(row.unit)+'" placeholder="'+(trackBy==='count'?'pcs, cans…':'g, lb…')+'" data-live="row-unit" data-row="'+idx+'"></div>';
+}
+function renderExpiryField(row,idx){
   const expiryMode=row.expiryMode==='never'?'never':'date';
   const dateChips=DURATION_PRESETS.map((p,pi)=>'<button type="button" class="pill-btn" style="font-size:11px;padding:4px 10px;" data-action="pick-row-duration" data-row="'+idx+'" data-preset="'+pi+'">'+p.label+'</button>').join('');
-  const expirySection=
-    '<div class="field" style="grid-column:span 2;">'+
+  return '<div class="field" style="grid-column:span 2;">'+
       '<label>Expires</label>'+
       '<div style="display:flex;gap:8px;margin-bottom:8px;">'+
         '<button type="button" class="pill-btn '+(expiryMode==='date'?'active':'')+'" data-action="set-row-expiry-mode" data-row="'+idx+'" data-mode="date">📅 Set a date</button>'+
@@ -1897,6 +1900,11 @@ function renderItemFormRow(row,idx,isEdit){
         '<input type="date" name="row-expires-on" value="'+h(row.expiresOn)+'" data-live="row-expires-on" data-row="'+idx+'" style="max-width:180px;">'
         :'<div style="font-size:12px;color:var(--ink-soft);font-weight:600;">This item won\'t trigger USE SOON alerts.</div>')+
     '</div>';
+}
+function renderItemFormRow(row,idx,isEdit){
+  const catOptions=state.settings.categories.map(c=>'<option value="'+h(c.name)+'" '+(c.name===row.category?'selected':'')+'>'+c.emoji+' '+h(c.name)+'</option>').join('');
+  const locOptions=LOCATIONS.map(l=>'<option value="'+l+'" '+(l===row.location?'selected':'')+'>'+l+'</option>').join('');
+  const qtyField=renderQtyField(row,idx);
   const removeBtn=(!isEdit)?'<button type="button" class="btn-ghost" data-action="remove-batch-row" data-row="'+idx+'" style="color:var(--orange);margin-left:auto;">✕ Remove row</button>':'';
   return (
     '<div class="form-card" style="margin-bottom:14px;">'+
@@ -1906,10 +1914,10 @@ function renderItemFormRow(row,idx,isEdit){
         '<div class="field" style="max-width:90px;"><label>Emoji</label><input name="row-emoji" id="item-emoji-input-'+idx+'" value="'+h(row.emoji||'')+'" placeholder="'+(guessItemEmoji(row.name)||getCat(row.category).emoji)+'" data-live="row-emoji" data-row="'+idx+'" style="font-size:18px;text-align:center;"></div>'+
         '<div class="field"><label>Category *</label><select name="row-category" id="item-cat-select-'+idx+'" data-change="row-cat" data-row="'+idx+'">'+catOptions+'</select></div>'+
         '<div class="field"><label>Location</label><select name="row-location" data-change="row-loc" data-row="'+idx+'">'+locOptions+'</select></div>'+
-        qtyField+
-        '<div class="field"><label>Unit *</label><input name="row-unit" list="'+unitListId+'" value="'+h(row.unit)+'" placeholder="'+(trackBy==='count'?'pcs, cans…':'g, lb…')+'" data-live="row-unit" data-row="'+idx+'"></div>'+
+        '<div id="qty-field-'+idx+'" style="display:contents;">'+qtyField+'</div>'+
+        '<div id="unit-field-'+idx+'" style="display:contents;">'+renderUnitField(row,idx)+'</div>'+
         '<div class="field"><label>Low stock at</label><input type="number" name="row-threshold" min="0" step="any" value="'+h(row.threshold)+'" data-live="row-threshold" data-row="'+idx+'" placeholder="optional"></div>'+
-        expirySection+
+        '<div id="expiry-field-'+idx+'" style="display:contents;">'+renderExpiryField(row,idx)+'</div>'+
       '</div>'+
     '</div>'
   );
@@ -3677,7 +3685,16 @@ document.addEventListener('input',e=>{
     const idx=Number(el.dataset.row);const row=ui.itemFormRows[idx];if(!row)return;
     row.name=el.value;
     const sel=document.getElementById('item-cat-select-'+idx);
-    if(sel&&!row.categoryTouched){const guess=guessCategory(el.value);row.category=guess;sel.value=guess;}
+    if(sel&&!row.categoryTouched){
+      const guess=guessCategory(el.value);
+      if(guess!==row.category){
+        row.category=guess;sel.value=guess;
+        if(!row.expiryTouched){row.expiryMode=catNoExpiry(row.category)?'never':'unset';row.expiresOn='';}
+        partialUpdate('qty-field-'+idx, renderQtyField(row,idx));
+        partialUpdate('unit-field-'+idx, renderUnitField(row,idx));
+        partialUpdate('expiry-field-'+idx, renderExpiryField(row,idx));
+      }
+    }
     const emojiInput=document.getElementById('item-emoji-input-'+idx);
     if(emojiInput){emojiInput.placeholder=guessItemEmoji(el.value)||getCat(row.category).emoji;}
   }
