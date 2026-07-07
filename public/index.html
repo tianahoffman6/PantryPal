@@ -1931,8 +1931,8 @@ function renderItemFormRow(row,idx,isEdit){
             '<input name="row-emoji" id="item-emoji-input-'+idx+'" value="'+h(row.emoji||'')+'" placeholder="'+(guessItemEmoji(row.name)||getCat(row.category).emoji)+'" data-live="row-emoji" data-row="'+idx+'" style="font-size:18px;text-align:center;width:100%;">'+
             '<button type="button" class="btn-ghost" data-action="toggle-row-emoji-picker" data-row="'+idx+'" title="Pick an emoji" style="flex-shrink:0;">▾</button>'+
           '</div>'+
-          (row.emojiPickerOpen?'<div class="emoji-picker">'+ITEM_EMOJI_PALETTE.map(em=>'<button type="button" class="emoji-pick-btn '+(row.emoji===em?'selected':'')+'" data-action="pick-row-emoji" data-row="'+idx+'" data-emoji="'+em+'">'+em+'</button>').join('')+'</div>':'')+
         '</div>'+
+        (row.emojiPickerOpen?'<div class="field" style="grid-column:1/-1;"><div class="emoji-picker" style="max-height:none;">'+ITEM_EMOJI_PALETTE.map(em=>'<button type="button" class="emoji-pick-btn '+(row.emoji===em?'selected':'')+'" data-action="pick-row-emoji" data-row="'+idx+'" data-emoji="'+em+'">'+em+'</button>').join('')+'</div></div>':'')+
         '<div class="field"><label>Category *</label><select name="row-category" id="item-cat-select-'+idx+'" data-change="row-cat" data-row="'+idx+'">'+catOptions+'</select></div>'+
         '<div class="field"><label>Location</label><select name="row-location" data-change="row-loc" data-row="'+idx+'">'+locOptions+'</select></div>'+
         '<div id="qty-field-'+idx+'" style="display:contents;">'+qtyField+'</div>'+
