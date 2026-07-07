@@ -317,6 +317,15 @@ input::placeholder,textarea::placeholder{color:var(--ink-soft);}
 .cook-step-num{font-family:'JetBrains Mono';font-size:13px;font-weight:700;color:var(--green);flex-shrink:0;width:22px;padding-top:1px;}
 .cooking-empty-state{text-align:center;padding:20px 0 24px;}
 .cooking-footer{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0;}
+.cooking-sheet-split{max-width:980px;}
+.cooking-body-split{display:flex;flex:1;overflow-y:auto;padding:0;}
+.cooking-panel{flex:1;min-width:0;padding:18px 22px;}
+.cooking-panel+.cooking-panel{border-left:1px solid var(--border);}
+.cooking-panel-title{font-family:'Bitter',Georgia,serif;font-size:16px;font-weight:700;margin-bottom:8px;}
+@media(max-width:700px){
+  .cooking-body-split{flex-direction:column;overflow-y:visible;}
+  .cooking-panel+.cooking-panel{border-left:none;border-top:1px solid var(--border);}
+}
 @media(max-width:480px){
   .pp-content{padding:14px 14px 80px;}
   .planner-slots{grid-template-columns:1fr;}
@@ -579,6 +588,7 @@ let ui={
   // recipe browser (within planner tab)
   browserSearch:'', browserMealFilter:'All',
   browserShowAddForm:false, generatingRandom:false, generateError:'',
+  suggestedSides:{}, suggestingSideFor:null, sideError:'',
   // settings
   settingsSection:'categories', editCatId:null, showAddCat:false,
   newCatName:'', newCatEmoji:'🍽', newCatColor:'#4F7042',
@@ -699,6 +709,57 @@ function toggleGroup(key){
 function saveRecipe(recipe){
   const dup=state.cookbook.some(r=>r.title.toLowerCase()===recipe.title.toLowerCase());
   if(!dup){state.cookbook.unshift({...recipe,id:uid(),dateAdded:new Date().toISOString()});saveCookbook();}
+}
+// Finds a side dish paired with a main — checks recipes suggested earlier this
+// session first (fast), then falls back to scanning the cookbook's saved sideFor
+// links so the pairing survives across sessions.
+function findSideFor(mainTitle){
+  if(!mainTitle) return null;
+  if(ui.suggestedSides&&ui.suggestedSides[mainTitle]) return ui.suggestedSides[mainTitle];
+  const side=state.cookbook.find(r=>r.sideFor&&r.sideFor.toLowerCase()===mainTitle.toLowerCase());
+  return side?side.title:null;
+}
+function openAssignModalFor(title){
+  ui.recipeViewModal=null;
+  ui.assignModal={title,sideTitle:findSideFor(title),includeSide:true,weekOffset:0};
+  renderModal();
+}
+// Finds another recipe planned in the same slot that's paired with `meal` — either
+// `meal` is the main and the other is its side, or vice versa.
+function findPairedMealInSlot(date,slot,meal){
+  const mealEntry=state.cookbook.find(r=>r.title.toLowerCase()===meal.toLowerCase());
+  const others=slotMeals(getPlannerDay(date),slot).filter(t=>t.toLowerCase()!==meal.toLowerCase());
+  for(const other of others){
+    const otherEntry=state.cookbook.find(r=>r.title.toLowerCase()===other.toLowerCase());
+    if(otherEntry&&otherEntry.sideFor&&otherEntry.sideFor.toLowerCase()===meal.toLowerCase()) return other;
+    if(mealEntry&&mealEntry.sideFor&&mealEntry.sideFor.toLowerCase()===other.toLowerCase()) return other;
+  }
+  return null;
+}
+async function suggestSide(mainRecipe){
+  if(!mainRecipe||ui.suggestingSideFor) return;
+  ui.suggestingSideFor=mainRecipe.title;ui.sideError='';render();
+  const inventory=state.inventory.map(i=>i.name+(i.quantity?' ('+i.quantity+(i.unit?' '+i.unit:'')+')':'')).join(', ');
+  const system='You are the recipe engine inside a home kitchen app called PantryPal. Given a main dish and the kitchen inventory, suggest ONE complementary side dish that pairs well with it. Respond ONLY with a raw JSON object (no markdown, no commentary): {"title":string,"cuisine":string,"mealType":string,"totalTimeMinutes":number,"servings":number,"description":string,"spiceLevel":string,"ingredients":[{"name":string,"quantity":string,"have":boolean}],"steps":[string],"missingIngredients":[string],"usesLowStock":[string]}. Mark ingredient have:true if it fuzzy-matches the inventory. Keep steps to 4-6 imperative sentences under 15 words. Use the same mealType as the main dish\'s own meal occasion.';
+  const payload={mainDish:{title:mainRecipe.title,cuisine:mainRecipe.cuisine,mealType:mainRecipe.mealType,ingredients:(mainRecipe.ingredients||[]).map(i=>i.name||i)},inventory};
+  try{
+    const data=await api('POST','generate-recipe',{max_tokens:1200,system,messages:[{role:'user',content:JSON.stringify(payload)}]});
+    if(!data) throw new Error('request failed');
+    let text=(data.content||[]).find(b=>b.type==='text')?.text||'';
+    text=text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+    const side=JSON.parse(text);
+    if(!side.title) throw new Error('empty');
+    const sideRecipe={...side,missingIngredients:side.missingIngredients||[],usesLowStock:side.usesLowStock||[],tags:[],sideFor:mainRecipe.title};
+    saveRecipe(sideRecipe);
+    ui.suggestedSides=ui.suggestedSides||{};
+    ui.suggestedSides[mainRecipe.title]=sideRecipe.title;
+    noteCreditSpent();
+  }catch(e){
+    console.error(e);
+    ui.sideError=lastApiStatus===402?'You\'re out of AI credits. Buy more in Settings → Household & Account.':'Couldn\'t suggest a side right now. Try again.';
+  }
+  ui.suggestingSideFor=null;
+  render();
 }
 function deleteCookbookItem(id){state.cookbook=state.cookbook.filter(r=>r.id!==id);saveCookbook();render();}
 function addManualRecipe(fd){
@@ -1557,7 +1618,7 @@ function renderRecipeViewModal(){
 }
 
 function renderAssignModal(){
-  const{title,weekOffset}=ui.assignModal;
+  const{title,sideTitle,includeSide,weekOffset}=ui.assignModal;
   const ws=getWeekStart(weekOffset||0);
   const we=new Date(ws);we.setDate(we.getDate()+6);
   const label=ws.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' – '+we.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
@@ -1597,7 +1658,13 @@ function renderAssignModal(){
         '<div style="padding:20px 22px 0;flex-shrink:0;">'+
           '<button class="modal-close" data-action="close-assign-modal">×</button>'+
           '<div class="modal-title" style="margin-bottom:2px;">Add to planner</div>'+
-          '<div style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:14px;">'+h(title)+'</div>'+
+          '<div style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:'+(sideTitle?'4px':'14px')+';">'+h(title)+'</div>'+
+          (sideTitle?
+            '<label style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:var(--ink-soft);margin-bottom:14px;cursor:pointer;">'+
+              '<input type="checkbox" data-action="assign-modal-toggle-side" '+(includeSide?'checked':'')+' style="width:auto;margin:0;">'+
+              '🥗 Also add its side, <strong style="color:var(--ink);">'+h(sideTitle)+'</strong>'+
+            '</label>'
+          :'')+
           '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">'+
             '<button type="button" class="planner-nav" data-action="assign-modal-prev-week">‹</button>'+
             '<div style="font-size:13px;font-weight:800;color:var(--ink-soft);">'+label+'</div>'+
@@ -2009,6 +2076,11 @@ function renderRecipeCard(r,idx){
   ).join('');
   const steps=(r.steps||[]).map(s=>'<li>'+h(s)+'</li>').join('');
   const isSaved=state.cookbook.some(cb=>cb.title.toLowerCase()===r.title.toLowerCase());
+  const sideTitle=findSideFor(r.title);
+  const sidingUp=ui.suggestingSideFor===r.title;
+  const sideBlock=sideTitle
+    ?'<div style="font-size:12.5px;font-weight:700;color:var(--ink-soft);margin-bottom:10px;">🥗 Side: <strong style="color:var(--ink);">'+h(sideTitle)+'</strong></div>'
+    :'<button type="button" class="btn-icon" data-action="suggest-side" data-idx="'+idx+'" '+(sidingUp?'disabled':'')+' style="margin-bottom:10px;">'+(sidingUp?'Suggesting…':'+ Suggest a side')+'</button>';
   return '<div class="recipe-card">'+
     '<h3>'+h(r.title||'Untitled')+'</h3>'+
     '<div class="recipe-badges">'+
@@ -2019,11 +2091,14 @@ function renderRecipeCard(r,idx){
     (usesLow.length?'<div class="uses-low">Uses up: '+usesLow.map(h).join(', ')+'</div>':'')+
     '<ul class="ing-list">'+ings+'</ul>'+
     '<ol class="recipe-steps">'+steps+'</ol>'+
+    sideBlock+
+    (ui.sideError&&sidingUp?'<div class="error-card" style="margin-bottom:10px;">'+h(ui.sideError)+'</div>':'')+
     '<div class="recipe-actions">'+
       (missing.length?'<button class="btn btn-secondary" data-action="add-missing-grocery" data-idx="'+idx+'">+ '+missing.length+' to list</button>':'')+
       (isSaved
         ?'<button class="btn btn-secondary" disabled>✓ Saved</button>'
         :'<button class="btn btn-secondary" data-action="save-recipe" data-idx="'+idx+'">🔖 Save</button>')+
+      '<button class="btn btn-secondary" data-action="plan-recipe-result" data-idx="'+idx+'">📅 Plan</button>'+
     '</div>'+
   '</div>';
 }
@@ -2206,8 +2281,9 @@ function renderHome(){
       const availText=avail?(avail.missing===0
         ?'<span style="color:var(--green);">✅ Ready to cook</span>'
         :'<span style="color:var(--gold);">'+avail.have+'/'+avail.total+' ingredients in kitchen</span>'):'';
+      const sideTag=cbEntry&&cbEntry.sideFor?'<span style="color:var(--ink-soft);font-weight:600;font-size:11px;" title="Side of '+h(cbEntry.sideFor)+'">🥗 </span>':'';
       return '<div style="margin-bottom:8px;">'+
-        '<div class="today-meal-name">'+h(meal)+'</div>'+
+        '<div class="today-meal-name">'+sideTag+h(meal)+'</div>'+
         (availText?'<div class="today-meal-avail">'+availText+'</div>':'')+
         '<button class="today-cook-btn" data-action="open-cooking-mode" data-date="'+key+'" data-slot="'+h(slot)+'" data-meal="'+h(meal)+'">▶ Cook it</button>'+
       '</div>';
@@ -2346,15 +2422,44 @@ function renderGroceryPreview(){
 }
 
 // ─── COOKING MODE MODAL ───────────────────────────────────────────────────
+function renderCookingSidePanel(pairedTitle,pairedChecklist){
+  const recipe=state.cookbook.find(r=>r.title.toLowerCase()===pairedTitle.toLowerCase());
+  if(!recipe){
+    return '<div class="cooking-panel"><div class="cooking-panel-title">🥗 '+h(pairedTitle)+'</div>'+
+      '<p style="color:var(--ink-soft);font-size:13px;">No saved recipe for this one yet.</p></div>';
+  }
+  const avail=recipeAvailability(recipe);
+  const ings=avail?avail.items:((recipe.ingredients||[]).map(i=>({name:i.name||String(i),quantity:i.quantity||'',have:false})));
+  const ingHtml=ings.length?'<div class="cooking-section-label">Ingredients</div>'+
+    ings.map(i=>{
+      const done=!!(pairedChecklist&&pairedChecklist[i.name]);
+      const cls=done?'done':(i.have?'have':'need');
+      const icon=done?'✓':(i.have?'✓':'·');
+      return '<button type="button" class="cook-ing-row" data-action="toggle-cooking-side-ingredient" data-name="'+h(i.name)+'">'+
+        '<div class="cook-check '+cls+'">'+icon+'</div>'+
+        '<span class="cook-ing-text '+(done?'done':'')+'">'+h(i.name)+'</span>'+
+        (i.quantity?'<span class="cook-ing-qty">'+h(i.quantity)+'</span>':'')+
+      '</button>';
+    }).join(''):'';
+  const stepsHtml=recipe.steps&&recipe.steps.length?'<div class="cooking-section-label">Steps</div>'+
+    recipe.steps.map((s,idx)=>'<div class="cook-step"><span class="cook-step-num">'+(idx+1)+'</span><span>'+h(s)+'</span></div>').join(''):'';
+  return '<div class="cooking-panel">'+
+    '<div class="cooking-panel-title">🥗 '+h(recipe.title)+'</div>'+
+    (recipe.description?'<p style="color:var(--ink-soft);font-size:13px;font-weight:600;margin-bottom:2px;line-height:1.5;">'+h(recipe.description)+'</p>':'')+
+    ingHtml+stepsHtml+
+  '</div>';
+}
+
 function renderCookingModal(){
   const root=document.getElementById('cooking-modal-root');
   if(!root) return;
   if(!ui.cookingModal){root.innerHTML='';return;}
 
-  const{date,slot,meal,checklist,generating,generatedRecipe,error}=ui.cookingModal;
+  const{date,slot,meal,checklist,generating,generatedRecipe,error,pairedMeal,pairedChecklist}=ui.cookingModal;
   const emoji=SLOT_EMOJI[slot]||'';
   const cbRecipe=state.cookbook.find(r=>r.title.toLowerCase()===meal.toLowerCase());
   const recipe=generatedRecipe||cbRecipe;
+  const split=!!pairedMeal&&!generating&&!!recipe; // only split when the main itself resolved to a real recipe
 
   let body='',footer='';
   const footerBase=
@@ -2387,11 +2492,16 @@ function renderCookingModal(){
     const stepsHtml=recipe.steps&&recipe.steps.length?'<div class="cooking-section-label">Steps</div>'+
       recipe.steps.map((s,idx)=>'<div class="cook-step"><span class="cook-step-num">'+(idx+1)+'</span><span>'+h(s)+'</span></div>').join(''):'';
 
-    body='<div class="cooking-body">'+
+    const mainContent=
       (recipe.description?'<p style="color:var(--ink-soft);font-size:14px;font-weight:600;margin-bottom:2px;line-height:1.5;">'+h(recipe.description)+'</p>':'')+
       ingHtml+stepsHtml+
-      (error?'<div class="error-card" style="margin-top:14px;">'+h(error)+'</div>':'')+
-    '</div>';
+      (error?'<div class="error-card" style="margin-top:14px;">'+h(error)+'</div>':'');
+
+    body=split
+      ?'<div class="cooking-body-split"><div class="cooking-panel"><div class="cooking-panel-title">🍽 '+h(meal)+'</div>'+mainContent+'</div>'+
+          renderCookingSidePanel(pairedMeal,pairedChecklist)+
+        '</div>'
+      :'<div class="cooking-body">'+mainContent+'</div>';
 
     footer='<div class="cooking-footer">'+footerBase+
       (!cbRecipe&&generatedRecipe?'<button class="btn btn-primary" data-action="save-generated-recipe">🔖 Save to cookbook</button>':'')+
@@ -2414,12 +2524,12 @@ function renderCookingModal(){
   }
 
   root.innerHTML='<div class="cooking-overlay" id="pp-cooking-overlay">'+
-    '<div class="cooking-sheet">'+
+    '<div class="cooking-sheet'+(split?' cooking-sheet-split':'')+'">'+
       '<div class="cooking-header">'+
         '<button class="modal-close" data-action="close-cooking-modal" style="float:right;margin-top:-4px;">×</button>'+
         '<div class="cooking-slot-label">'+emoji+' '+h(slot)+'</div>'+
-        '<div class="cooking-title">'+h(meal)+'</div>'+
-        (recipe?'<div class="cooking-meta-row">'+
+        '<div class="cooking-title">'+h(meal)+(split?' + '+h(pairedMeal):'')+'</div>'+
+        (recipe&&!split?'<div class="cooking-meta-row">'+
           [recipe.cuisine,recipe.totalTimeMinutes?recipe.totalTimeMinutes+' min':null,recipe.servings?'Serves '+recipe.servings:null,recipe.spiceLevel].filter(Boolean).map(h).join(' · ')+
         '</div>':'')+
       '</div>'+
@@ -2547,7 +2657,8 @@ function renderPlanner(){
         const cbEntry=state.cookbook.find(r=>r.title.toLowerCase()===meal.toLowerCase());
         const avail=cbEntry?recipeAvailability(cbEntry):null;
         const dot=avail&&avail.missing===0?'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;flex-shrink:0;"></span>':'';
-        return '<button type="button" class="slot-meal-row" data-action="open-cooking-mode" data-date="'+key+'" data-slot="'+h(slot)+'" data-meal="'+h(meal)+'">'+dot+h(meal)+'</button>';
+        const sideTag=cbEntry&&cbEntry.sideFor?'<span style="color:var(--ink-soft);font-weight:600;font-size:11px;" title="Side of '+h(cbEntry.sideFor)+'">🥗 </span>':'';
+        return '<button type="button" class="slot-meal-row" data-action="open-cooking-mode" data-date="'+key+'" data-slot="'+h(slot)+'" data-meal="'+h(meal)+'">'+dot+sideTag+h(meal)+'</button>';
       }).join('');
       return '<div class="planner-slot planner-slot-filled">'+
         '<div class="slot-label">'+emoji+' '+slot+'</div>'+
@@ -3238,6 +3349,8 @@ document.addEventListener('click',e=>{
     case 'use-what-i-have': ui.cookFilters.mealType='Any';ui.cookFilters.cuisine='Any';ui.cookFilters.maxTime='any';ui.cookFilters.preferHave=true;findRecipes();break;
     case 'add-missing-grocery': addMissingToGrocery(Number(a.idx));break;
     case 'save-recipe':{const r=ui.recipes[Number(a.idx)];if(r){saveRecipe(r);render();}}break;
+    case 'suggest-side':{const r=ui.recipes[Number(a.idx)];if(r) suggestSide(r);}break;
+    case 'suggest-side-for-view': if(ui.recipeViewModal) suggestSide(ui.recipeViewModal.recipe);break;
     // cookbook
     case 'open-add-cookbook': ui.showAddCookbook=true;render();break;
     case 'close-add-cookbook': ui.showAddCookbook=false;render();break;
@@ -3255,15 +3368,21 @@ document.addEventListener('click',e=>{
     case 'close-recipe-view': ui.recipeViewModal=null; renderModal(); break;
     case 'toggle-recipe-view-size': if(ui.recipeViewModal){ ui.recipeViewModal.large=!ui.recipeViewModal.large; renderModal(); } break;
     // assign-to-planner modal (used from the cookbook and the planner's recipe browser)
-    case 'open-assign-modal': ui.recipeViewModal=null; ui.assignModal={title:a.title,weekOffset:0}; renderModal(); break;
+    case 'open-assign-modal': openAssignModalFor(a.title); break;
     case 'close-assign-modal': ui.assignModal=null; renderModal(); break;
     case 'assign-modal-prev-week': ui.assignModal.weekOffset=(ui.assignModal.weekOffset||0)-1; renderModal(); break;
     case 'assign-modal-next-week': ui.assignModal.weekOffset=(ui.assignModal.weekOffset||0)+1; renderModal(); break;
+    case 'assign-modal-toggle-side': ui.assignModal.includeSide=!ui.assignModal.includeSide; renderModal(); break;
     case 'assign-modal-pick-slot':
       addPlannerMeal(a.date,a.slot,ui.assignModal.title);
+      if(ui.assignModal.sideTitle&&ui.assignModal.includeSide) addPlannerMeal(a.date,a.slot,ui.assignModal.sideTitle);
       ui.assignModal=null;
       renderModal();
       break;
+    case 'plan-recipe-result':{
+      const r=ui.recipes[Number(a.idx)];
+      if(r){ saveRecipe(r); openAssignModalFor(r.title); }
+    }break;
     // planner
     case 'open-planner-modal':
       ui.plannerModal={date:a.date,slot:a.slot,mode:'add'};
@@ -3321,12 +3440,15 @@ document.addEventListener('click',e=>{
     case 'add-week-missing': addWeekMissingToGrocery();break;
     // cooking mode
     case 'open-cooking-mode':
-      ui.cookingModal={date:a.date,slot:a.slot,meal:a.meal,checklist:{},generating:false,generatedRecipe:null,error:''};
+      ui.cookingModal={date:a.date,slot:a.slot,meal:a.meal,checklist:{},generating:false,generatedRecipe:null,error:'',
+        pairedMeal:findPairedMealInSlot(a.date,a.slot,a.meal),pairedChecklist:{}};
       renderCookingModal();break;
     case 'close-cooking-modal':
       ui.cookingModal=null;renderCookingModal();break;
     case 'toggle-cooking-ingredient':
       if(ui.cookingModal){ui.cookingModal.checklist[a.name]=!ui.cookingModal.checklist[a.name];renderCookingModal();}break;
+    case 'toggle-cooking-side-ingredient':
+      if(ui.cookingModal){ui.cookingModal.pairedChecklist[a.name]=!ui.cookingModal.pairedChecklist[a.name];renderCookingModal();}break;
     case 'generate-meal-recipe':
       if(ui.cookingModal) generateRecipeForMeal();break;
     case 'save-generated-recipe':
