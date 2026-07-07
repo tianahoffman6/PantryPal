@@ -506,14 +506,19 @@ async function loadState(){
   state.settings  = data.settings || defaultSettings();
   // back-fill any missing settings keys
   if(!state.settings.categories) state.settings.categories = DEFAULT_CATEGORIES.map(c=>({...c}));
-  // back-fill trackBy/noExpiry on categories saved before this feature existed
+  // back-fill trackBy/noExpiry on categories saved before this feature existed —
+  // persist via saveSettings() so the background poller doesn't clobber this
+  // in-memory fix with the still-unmigrated copy from the server
+  let categoriesMigrated=false;
   state.settings.categories.forEach(cat=>{
     if(!cat.trackBy){
       const def=DEFAULT_CATEGORIES.find(d=>d.name===cat.name);
       cat.trackBy=def?def.trackBy:'count';
+      categoriesMigrated=true;
     }
-    if(typeof cat.noExpiry!=='boolean') cat.noExpiry=false;
+    if(typeof cat.noExpiry!=='boolean'){cat.noExpiry=false;categoriesMigrated=true;}
   });
+  if(categoriesMigrated) saveSettings();
   if(!state.settings.stores)     state.settings.stores = [];
   if(!state.settings.cuisines)   state.settings.cuisines = defaultSettings().cuisines;
   if(!state.settings.members)    state.settings.members = defaultSettings().members;
