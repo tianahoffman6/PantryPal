@@ -604,7 +604,7 @@ let ui={
   showAddGrocery:false, groceryQuickCat:'Other', groceryQuickCatBg:'#E2DCCB', groceryQuickCatColor:'#6B7160', groceryQuickEmoji:'📦',
   // cook
   cookFilters:{mealType:'Any',cuisine:'Any',customCuisine:'',maxTime:'any',preferHave:false,notes:'',ingredients:[]},
-  cookKitchenPickerOpen:false,
+  cookKitchenPickerOpen:false, cookKitchenPickerCat:null,
   recipeStatus:'idle', recipes:[], recipeError:'',
   // cookbook
   cbSearch:'', cbMealFilter:'All', cbCanMake:false, cbFav:false, showAddCookbook:false,
@@ -2187,12 +2187,28 @@ function renderCookIngredientPicker(){
       '<button type="button" data-action="remove-cook-ingredient" data-val="'+h(ing)+'" style="background:none;border:none;color:inherit;cursor:pointer;font-weight:900;padding:0;">×</button>'+
     '</span>'
   ).join('');
-  const kitchenNames=[...new Set(state.inventory.map(i=>i.name))].filter(n=>!(f.ingredients||[]).some(x=>x.toLowerCase()===n.toLowerCase())).sort();
-  const kitchenDropdown=ui.cookKitchenPickerOpen
-    ?'<div class="emoji-picker" style="display:flex;flex-wrap:wrap;max-height:160px;">'+
-        (kitchenNames.length?kitchenNames.map(n=>'<button type="button" class="pill-btn" style="font-size:12px;" data-action="add-cook-ingredient-from-kitchen" data-val="'+h(n)+'">'+h(n)+'</button>').join(''):'<span style="font-size:12px;color:var(--ink-soft);padding:4px;">No more kitchen items to add.</span>')+
-      '</div>'
-    :'';
+  const pickedLower=(f.ingredients||[]).map(x=>x.toLowerCase());
+  const availableItems=state.inventory.filter(i=>!pickedLower.includes(i.name.toLowerCase()));
+  const selectedCat=ui.cookKitchenPickerCat;
+  let kitchenDropdown='';
+  if(ui.cookKitchenPickerOpen){
+    if(!availableItems.length){
+      kitchenDropdown='<div class="emoji-picker" style="display:flex;flex-wrap:wrap;"><span style="font-size:12px;color:var(--ink-soft);padding:4px;">No more kitchen items to add.</span></div>';
+    } else if(!selectedCat){
+      // Step 1: pick a category
+      const catCounts=state.settings.categories.map(cat=>({cat,count:availableItems.filter(i=>i.category===cat.name).length})).filter(x=>x.count>0);
+      kitchenDropdown='<div class="emoji-picker" style="display:flex;flex-wrap:wrap;">'+
+        catCounts.map(({cat,count})=>'<button type="button" class="pill-btn" style="font-size:12px;" data-action="set-cook-kitchen-cat" data-val="'+h(cat.name)+'">'+cat.emoji+' '+h(cat.name)+' <span style="color:var(--ink-soft);">('+count+')</span></button>').join('')+
+      '</div>';
+    } else {
+      // Step 2: pick an item within the chosen category
+      const names=[...new Set(availableItems.filter(i=>i.category===selectedCat).map(i=>i.name))].sort();
+      kitchenDropdown='<div class="emoji-picker" style="display:flex;flex-wrap:wrap;align-items:center;">'+
+        '<button type="button" class="pill-btn" data-action="set-cook-kitchen-cat" data-val="" style="font-weight:900;">← All categories</button>'+
+        (names.length?names.map(n=>'<button type="button" class="pill-btn" style="font-size:12px;" data-action="add-cook-ingredient-from-kitchen" data-val="'+h(n)+'">'+h(n)+'</button>').join(''):'<span style="font-size:12px;color:var(--ink-soft);padding:4px;">No items left in this category.</span>')+
+      '</div>';
+    }
+  }
   return '<div class="filter-field" style="flex:1 1 100%;">'+
     '<label>Cook with these ingredients (optional)</label>'+
     (chips?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">'+chips+'</div>':'')+
@@ -3573,7 +3589,8 @@ document.addEventListener('click',e=>{
     case 'add-cook-ingredient-from-kitchen':
       if(!ui.cookFilters.ingredients.some(x=>x.toLowerCase()===a.val.toLowerCase())) ui.cookFilters.ingredients.push(a.val);
       render();break;
-    case 'toggle-cook-kitchen-picker': ui.cookKitchenPickerOpen=!ui.cookKitchenPickerOpen;render();break;
+    case 'toggle-cook-kitchen-picker': ui.cookKitchenPickerOpen=!ui.cookKitchenPickerOpen;ui.cookKitchenPickerCat=null;render();break;
+    case 'set-cook-kitchen-cat': ui.cookKitchenPickerCat=a.val||null;render();break;
     case 'add-missing-grocery': addMissingToGrocery(Number(a.idx));break;
     case 'save-recipe':{const r=ui.recipes[Number(a.idx)];if(r){saveRecipe(r);render();}}break;
     case 'suggest-side':{const r=ui.recipes[Number(a.idx)];if(r) suggestSide(r);}break;
