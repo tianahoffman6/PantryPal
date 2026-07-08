@@ -1454,6 +1454,7 @@ function renderLogin(){
             '<div class="field" style="margin-bottom:12px;"><label>Email</label><input type="email" id="signup-email" autocomplete="email" required></div>'+
             '<div class="field" style="margin-bottom:12px;"><label>Password</label><input type="password" id="signup-password" autocomplete="new-password" required></div>'+
             (ui.signupError?'<p style="color:var(--orange);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.signupError)+'</p>':'')+
+            '<p style="font-size:11.5px;color:var(--ink-soft);margin-bottom:10px;">By creating an account you agree to our <a href="/terms" target="_blank" rel="noopener">Terms</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</p>'+
             '<button type="submit" class="btn btn-primary" style="width:100%;">Create account</button>'+
           '</form>'+
           '<button class="btn-ghost" data-action="set-auth-mode" data-val="login" style="width:100%;margin-top:10px;">Already have an account? Sign in</button>'
@@ -1468,6 +1469,9 @@ function renderLogin(){
           '<button class="btn-ghost" data-action="set-auth-mode" data-val="forgot" style="width:100%;margin-top:10px;font-size:12.5px;">Forgot password?</button>'+
           '<button class="btn-ghost" data-action="set-auth-mode" data-val="signup" style="width:100%;margin-top:4px;">Have an invite code? Sign up</button>'
         )+
+        '<p style="font-size:11px;color:var(--ink-soft);text-align:center;margin-top:18px;">'+
+          '<a href="/terms" target="_blank" rel="noopener">Terms</a> · <a href="/privacy" target="_blank" rel="noopener">Privacy</a>'+
+        '</p>'+
       '</div>'+
     '</div>';
 }

@@ -90,6 +90,69 @@ app.post('/api/stripe-webhook', express.raw({ type: 'application/json' }), async
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+const LEGAL_PAGE_STYLE = `
+  body{font-family:Georgia,'Bitter',serif;max-width:720px;margin:0 auto;padding:40px 24px 80px;color:#2A2E27;line-height:1.6;}
+  h1{font-family:Nunito,sans-serif;font-size:26px;margin-bottom:4px;}
+  h2{font-family:Nunito,sans-serif;font-size:17px;margin-top:32px;}
+  p,li{font-size:15px;}
+  .updated{color:#7A7A6E;font-size:13px;margin-bottom:32px;}
+  a{color:#3A6E32;}
+`;
+function legalPage(title, bodyHtml) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>${title} — PantryPal</title><style>${LEGAL_PAGE_STYLE}</style></head>
+    <body><p><a href="/">← Back to PantryPal</a></p>${bodyHtml}</body></html>`;
+}
+
+app.get('/terms', (req, res) => {
+  res.send(legalPage('Terms of Service', `
+    <h1>Terms of Service</h1>
+    <p class="updated">Last updated July 2026</p>
+    <p>PantryPal is a household inventory and recipe-planning tool. By creating an account you agree to these terms.</p>
+    <h2>Your account</h2>
+    <p>You're responsible for keeping your login credentials secure. Each household ("family") is invite-only — the household owner controls who can join and can remove members at any time.</p>
+    <h2>AI recipe generation</h2>
+    <p>Recipe generation uses a third-party AI service (Anthropic) to turn your kitchen inventory and preferences into recipe suggestions. Generated recipes are suggestions only — always use your own judgment about food safety, allergies, and ingredient substitutions.</p>
+    <h2>Credits and billing</h2>
+    <p>Non-owner households pay for AI recipe generation using credits purchased through Stripe. Credit purchases are for digital service usage and are generally non-refundable once credits are granted, except where required by law.</p>
+    <h2>Acceptable use</h2>
+    <p>Don't use PantryPal to store or share content that's illegal, abusive, or violates someone else's rights. We may suspend or remove accounts that misuse the service.</p>
+    <h2>Account deletion</h2>
+    <p>You can delete your account at any time from Settings. If you're the last member of a household, deleting your account permanently deletes that household's data too — this can't be undone.</p>
+    <h2>No warranty</h2>
+    <p>PantryPal is provided as-is. We don't guarantee it will always be available, error-free, or suitable for any particular purpose.</p>
+    <h2>Changes</h2>
+    <p>We may update these terms as the app evolves. Continued use after a change means you accept the updated terms.</p>
+    <h2>Contact</h2>
+    <p>Questions? Use the Help form in Settings once signed in, or reach out through the app's support channel.</p>
+  `));
+});
+
+app.get('/privacy', (req, res) => {
+  res.send(legalPage('Privacy Policy', `
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated July 2026</p>
+    <p>This describes what PantryPal collects and how it's used. We collect the minimum needed to run the app.</p>
+    <h2>What we collect</h2>
+    <ul>
+      <li><strong>Account info:</strong> email, password (stored as a one-way hash, never in plain text), and optionally your name and an accent color preference.</li>
+      <li><strong>Household data:</strong> the inventory, grocery lists, recipes, and meal plans you and your household members enter.</li>
+      <li><strong>Usage data:</strong> basic error logs and AI token usage, used to debug problems and calculate credit costs.</li>
+      <li><strong>Payment info:</strong> if you purchase credits, Stripe processes your card directly — we never see or store your card number.</li>
+    </ul>
+    <h2>How we use it</h2>
+    <p>To run the app (sync your data across devices, generate recipes via Anthropic's AI, process payments via Stripe) and to fix bugs and prevent abuse (rate limiting, error logging).</p>
+    <h2>Who sees it</h2>
+    <p>Your household's data is only visible to members of your household. It is never shown to other households. The app owner can see account-level metadata (email, usage stats, error logs) to provide support and keep the service running, but does not casually browse individual households' private data.</p>
+    <h2>Third parties</h2>
+    <p>We share data with the minimum needed vendors: Anthropic (recipe generation — receives your inventory/preferences for that request only), Stripe (payment processing), and Resend (transactional email like password resets).</p>
+    <h2>Your choices</h2>
+    <p>You can edit or delete your account data at any time from Settings. Deleting your account (as the last household member) permanently deletes all associated household data.</p>
+    <h2>Contact</h2>
+    <p>Questions about your data? Use the Help form in Settings once signed in.</p>
+  `));
+});
+
 async function backfillOwnerFamily() {
   const { rows: existing } = await pool.query('SELECT id FROM families WHERE is_owner_family = true LIMIT 1');
   let ownerFamilyId;
