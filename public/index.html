@@ -644,6 +644,8 @@ let ui={
   auditLog:[], auditLoaded:false,
   myFirstName:'', myLastName:'', myAccentColor:null, myTheme:'light', profileMsg:'', resetPasswordResult:null,
   householdSubSection:'household', adminSubSection:'onboard', acctEditField:null,
+  helpType:'Bug report', helpSubmitting:false, helpSent:false, helpError:'',
+  supportMessages:[], supportMessagesLoaded:false,
   myUserId:null, myRole:'member', myEmail:'',
   adminFamilies:[], adminLoaded:false, newInviteCode:'', newInviteExpires:'', newInviteLoading:false,
   householdDetailModal:null, householdDetailLoading:false, // {family, members, state}
@@ -1517,6 +1519,11 @@ async function boot(){
       ui.checkoutMessage='Payment received — updating your balance…';
       ui.creditsLoaded=false;
       ui.billingLoaded=false;
+    } else if(checkoutParam==='cancel'){
+      ui.tab='settings';
+      ui.settingsSection='household';
+      ui.householdSubSection='billing';
+      ui.checkoutMessage='Checkout canceled — no charge was made.';
     }
   }
   if(!ui.creditsLoaded) loadCredits(); // background — powers the low-credit warning chips
@@ -2958,7 +2965,8 @@ function renderSettings(){
     {id:'categories',label:'Categories'},
     {id:'stores',label:'Stores'},
     {id:'cuisines',label:'Cuisines'},
-    {id:'household',label:'Household & Account'}
+    {id:'household',label:'Household & Account'},
+    {id:'help',label:'Help'}
   ];
   if(ui.isOwnerFamily) sections.push({id:'admin',label:'Admin'});
   const nav=sections.map(s=>'<button class="pill-btn '+(ui.settingsSection===s.id?'active':'')+'" data-action="set-settings-section" data-val="'+s.id+'">'+s.label+'</button>').join('');
@@ -2968,6 +2976,7 @@ function renderSettings(){
   else if(ui.settingsSection==='stores') body=renderSettingsStores();
   else if(ui.settingsSection==='cuisines') body=renderSettingsCuisines();
   else if(ui.settingsSection==='household') body=renderSettingsHousehold();
+  else if(ui.settingsSection==='help') body=renderSettingsHelp();
   else if(ui.settingsSection==='admin') body=ui.isOwnerFamily?renderSettingsAdmin():renderSettingsCats();
 
   return '<div class="settings-nav">'+nav+'</div>'+body;
@@ -3154,7 +3163,7 @@ function renderHouseholdBilling(){
         '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">'+h(creditsRow)+'</p>'+
         (ui.credits!==null&&ui.credits<=5?'<p style="color:var(--orange);font-size:12.5px;font-weight:800;margin:-4px 0 10px;">⚡ Running low — top up so recipe generation keeps working.</p>':'')+
         packBtns+
-        (ui.checkoutMessage?'<p style="color:var(--green);font-size:13px;font-weight:700;margin-top:10px;">'+h(ui.checkoutMessage)+'</p>':'')+
+        (ui.checkoutMessage?'<p style="color:'+(ui.checkoutMessage.startsWith('Checkout canceled')?'var(--ink-soft)':'var(--green)')+';font-size:13px;font-weight:700;margin-top:10px;">'+h(ui.checkoutMessage)+'</p>':'')+
         (history?'<div style="margin-top:16px;"><label>Purchase history</label>'+history+'</div>':'')+
       '</div>'+
     '</div>';
@@ -3277,14 +3286,56 @@ function renderHouseholdAccount(){
     nameRow+emailRow+passwordRow+themeRow+accentRow;
 }
 
+const HELP_INQUIRY_TYPES=['Bug report','Billing question','Feature request','Account or login issue','Other'];
+function renderSettingsHelp(){
+  const typeOpts=HELP_INQUIRY_TYPES.map(t=>'<option value="'+h(t)+'" '+(t===ui.helpType?'selected':'')+'>'+h(t)+'</option>').join('');
+  if(ui.helpSent){
+    return '<div class="form-card">'+
+      '<div class="status-card" style="color:var(--green);font-weight:700;">✓ Message sent — thanks for letting us know. We\'ll follow up soon.</div>'+
+      '<button class="btn btn-secondary" style="margin-top:12px;" data-action="help-send-another">Send another message</button>'+
+    '</div>';
+  }
+  return '<div class="form-card">'+
+    '<div class="field" style="margin-bottom:14px;"><label>Need help?</label>'+
+      '<p style="color:var(--ink-soft);font-size:13px;">Run into a bug, a billing question, or something confusing? Send us a message below.</p>'+
+    '</div>'+
+    '<div class="form-grid" style="margin-bottom:12px;">'+
+      '<div class="field" style="grid-column:span 2;"><label>Subject</label><input id="help-subject" placeholder="e.g. Can\'t add items to my kitchen"></div>'+
+      '<div class="field"><label>Type of inquiry</label><select id="help-type" data-change="help-type">'+typeOpts+'</select></div>'+
+    '</div>'+
+    '<div class="field" style="margin-bottom:12px;"><label>Message</label>'+
+      '<textarea id="help-message" rows="5" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-weight:600;resize:vertical;" placeholder="Tell us what\'s going on…"></textarea>'+
+    '</div>'+
+    (ui.helpError?'<div class="error-card" style="margin-bottom:12px;">'+h(ui.helpError)+'</div>':'')+
+    '<button class="btn btn-primary" data-action="submit-help" '+(ui.helpSubmitting?'disabled':'')+'>'+(ui.helpSubmitting?'Sending…':'Send message')+'</button>'+
+  '</div>';
+}
 function renderSettingsAdmin(){
   if(!ui.adminLoaded) loadAdminFamilies();
-  const subs=[{id:'onboard',label:'Onboard'},{id:'households',label:'All households'}];
+  if(ui.adminSubSection==='support'&&!ui.supportMessagesLoaded) loadSupportMessages();
+  const subs=[{id:'onboard',label:'Onboard'},{id:'households',label:'All households'},{id:'support',label:'Support inbox'}];
   const subNav=subs.map(s=>'<button class="pill-btn '+(ui.adminSubSection===s.id?'active':'')+'" data-action="set-admin-sub" data-val="'+s.id+'">'+s.label+'</button>').join('');
-  const body=ui.adminSubSection==='households'?renderAdminHouseholds():renderAdminOnboard();
+  const body=ui.adminSubSection==='households'?renderAdminHouseholds():ui.adminSubSection==='support'?renderAdminSupport():renderAdminOnboard();
   return '<div class="settings-section-title">Admin</div>'+
     '<div class="settings-nav">'+subNav+'</div>'+
     body;
+}
+
+function renderAdminSupport(){
+  if(!ui.supportMessagesLoaded) return '<p style="color:var(--ink-soft);font-size:13px;">Loading…</p>';
+  if(!ui.supportMessages.length) return '<div class="status-card">No support messages yet.</div>';
+  const rows=ui.supportMessages.map(m=>
+    '<div class="settings-row" style="flex-direction:column;align-items:stretch;">'+
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'+
+        '<span style="font-weight:700;">'+h(m.subject)+'</span>'+
+        '<span class="pill-btn" style="font-size:11px;padding:3px 9px;">'+h(m.inquiry_type)+'</span>'+
+        '<span style="color:var(--ink-soft);font-size:11px;margin-left:auto;">'+h(new Date(m.created_at).toLocaleString())+'</span>'+
+      '</div>'+
+      '<div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-top:4px;">'+h(m.family_name||'Unknown household')+' · '+h(m.user_email||'unknown')+'</div>'+
+      '<div style="font-size:13.5px;margin-top:8px;white-space:pre-wrap;">'+h(m.message)+'</div>'+
+    '</div>'
+  ).join('');
+  return '<div class="form-card"><div class="field"><label>Incoming messages</label>'+rows+'</div></div>';
 }
 
 function renderAdminOnboard(){
@@ -3408,6 +3459,13 @@ async function loadAdminFamilies(){
   render();
 }
 
+async function loadSupportMessages(){
+  ui.supportMessagesLoaded=true;
+  const data=await api('GET','admin/support-messages');
+  if(data) ui.supportMessages=data.messages;
+  render();
+}
+
 async function viewFamilyData(id,name){
   if(!confirm('View "'+name+'"\'s private kitchen, recipes, and planner data? This is logged for accountability.')) return;
   ui.householdDetailLoading=true;ui.householdDetailModal={family:{id,name},members:[],state:{}};render();
@@ -3502,6 +3560,19 @@ async function loadBillingHistory(){
   render();
 }
 
+async function submitHelpMessage(){
+  const subjectEl=document.getElementById('help-subject');
+  const messageEl=document.getElementById('help-message');
+  const subject=(subjectEl?.value||'').trim();
+  const message=(messageEl?.value||'').trim();
+  if(!subject||!message){ ui.helpError='Please fill in a subject and message.'; render(); return; }
+  ui.helpSubmitting=true;ui.helpError='';render();
+  const data=await api('POST','support',{subject,inquiryType:ui.helpType,message});
+  ui.helpSubmitting=false;
+  if(data&&data.ok){ ui.helpSent=true; }
+  else{ ui.helpError='Couldn\'t send your message right now. Please try again.'; }
+  render();
+}
 async function changePassword(){
   const currentPassword=document.getElementById('acct-pw-current').value;
   const newPassword=document.getElementById('acct-pw-new').value;
@@ -3845,6 +3916,8 @@ document.addEventListener('click',e=>{
       break;
     // settings
     case 'set-settings-section': ui.settingsSection=a.val;render();break;
+    case 'submit-help': submitHelpMessage();break;
+    case 'help-send-another': ui.helpSent=false;ui.helpError='';render();break;
     case 'start-edit-cat':{const cat=state.settings.categories.find(c=>c.id===a.id);if(cat){ui.editCatId=a.id;ui.editCatName=cat.name;ui.editCatEmoji=cat.emoji;ui.editCatColor=cat.color;ui.editCatTrackBy=cat.trackBy||'count';ui.editCatNoExpiry=!!cat.noExpiry;render();}}break;
     case 'set-edit-cat-trackby': ui.editCatTrackBy=a.val;render();break;
     case 'toggle-edit-cat-noexpiry': ui.editCatNoExpiry=!ui.editCatNoExpiry;render();break;
@@ -3986,6 +4059,7 @@ document.addEventListener('change',e=>{
   else if(ch==='row-loc'){const row=ui.itemFormRows[Number(el.dataset.row)];if(row)row.location=el.value;}
   else if(ch==='signup-invite-check'){ checkSignupInvite(el.value.trim()); }
   else if(ch==='accent-custom'){ setAccentColor(el.value); }
+  else if(ch==='help-type'){ ui.helpType=el.value; }
 });
 
 document.addEventListener('submit',e=>{

@@ -182,6 +182,17 @@ async function initDB() {
     );
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS support_messages (
+      id SERIAL PRIMARY KEY,
+      family_id INTEGER REFERENCES families(id),
+      user_id INTEGER REFERENCES users(id),
+      subject TEXT NOT NULL,
+      inquiry_type TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS admin_audit_log (
       id SERIAL PRIMARY KEY,
       family_id INTEGER REFERENCES families(id),
@@ -604,22 +615,27 @@ app.post('/api/checkout', auth, async (req, res) => {
   if (!stripe) return res.status(500).json({ error: 'Stripe is not configured' });
   const pack = CREDIT_PACKS[(req.body || {}).pack] || CREDIT_PACKS.small;
   const origin = `${req.protocol}://${req.get('host')}`;
-  const session = await stripe.checkout.sessions.create({
-    mode: 'payment',
-    line_items: [{
-      price_data: {
-        currency: 'usd',
-        product_data: { name: `PantryPal Recipe Credits (${pack.credits})` },
-        unit_amount: pack.amountCents,
-      },
-      quantity: 1,
-    }],
-    client_reference_id: String(req.user.familyId),
-    metadata: { familyId: String(req.user.familyId), credits: String(pack.credits) },
-    success_url: `${origin}/?checkout=success`,
-    cancel_url: `${origin}/?checkout=cancel`,
-  });
-  res.json({ url: session.url });
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          product_data: { name: `PantryPal Recipe Credits (${pack.credits})` },
+          unit_amount: pack.amountCents,
+        },
+        quantity: 1,
+      }],
+      client_reference_id: String(req.user.familyId),
+      metadata: { familyId: String(req.user.familyId), credits: String(pack.credits) },
+      success_url: `${origin}/?checkout=success`,
+      cancel_url: `${origin}/?checkout=cancel`,
+    });
+    res.json({ url: session.url });
+  } catch (e) {
+    console.error('Stripe checkout session creation failed:', e.message);
+    res.status(502).json({ error: 'Could not start checkout right now. Please try again.' });
+  }
 });
 
 app.get('/api/billing/history', auth, async (req, res) => {
@@ -628,6 +644,60 @@ app.get('/api/billing/history', auth, async (req, res) => {
     [req.user.familyId]
   );
   res.json({ purchases: rows });
+});
+
+// Best-effort — a failed email must never lose the message, since it's already
+// saved to support_messages before this is called. Silently no-ops if Resend
+// isn't configured (RESEND_API_KEY / SUPPORT_EMAIL_TO env vars unset).
+async function sendSupportEmail({ subject, inquiryType, message, fromEmail }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const to = process.env.SUPPORT_EMAIL_TO;
+  if (!apiKey || !to) return;
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: process.env.SUPPORT_FROM_EMAIL || 'PantryPal Support <onboarding@resend.dev>',
+        to: [to],
+        reply_to: fromEmail,
+        subject: `[PantryPal ${inquiryType}] ${subject}`,
+        text: `From: ${fromEmail}\nType: ${inquiryType}\n\n${message}`,
+      }),
+    });
+  } catch (e) {
+    console.error('Support email send failed (message is still saved):', e.message);
+  }
+}
+
+app.post('/api/support', auth, async (req, res) => {
+  const subject = ((req.body || {}).subject || '').trim();
+  const inquiryType = ((req.body || {}).inquiryType || 'Other').trim();
+  const message = ((req.body || {}).message || '').trim();
+  if (!subject || !message) return res.status(400).json({ error: 'Subject and message are required' });
+
+  await pool.query(
+    'INSERT INTO support_messages (family_id, user_id, subject, inquiry_type, message) VALUES ($1, $2, $3, $4, $5)',
+    [req.user.familyId, req.user.userId, subject, inquiryType, message]
+  );
+  const { rows } = await pool.query('SELECT email FROM users WHERE id = $1', [req.user.userId]);
+  await sendSupportEmail({ subject, inquiryType, message, fromEmail: rows[0] ? rows[0].email : 'unknown' });
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/support-messages', auth, async (req, res) => {
+  if (!req.user.isOwnerFamily) return res.status(403).json({ error: 'Owner access only' });
+  const { rows: caller } = await pool.query('SELECT role FROM users WHERE id = $1', [req.user.userId]);
+  if (!caller[0] || caller[0].role !== 'owner') return res.status(403).json({ error: 'Owner access only' });
+  const { rows } = await pool.query(`
+    SELECT sm.id, sm.subject, sm.inquiry_type, sm.message, sm.created_at,
+      f.name AS family_name, u.email AS user_email
+    FROM support_messages sm
+    LEFT JOIN families f ON f.id = sm.family_id
+    LEFT JOIN users u ON u.id = sm.user_id
+    ORDER BY sm.created_at DESC LIMIT 200
+  `);
+  res.json({ messages: rows });
 });
 
 app.post('/api/generate-recipe', auth, async (req, res) => {
@@ -671,5 +741,11 @@ app.post('/api/generate-recipe', auth, async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 initDB().then(() => {
+  if (!STRIPE_SECRET_KEY || !STRIPE_WEBHOOK_SECRET) {
+    console.warn('WARNING: Stripe is not fully configured (missing STRIPE_SECRET_KEY and/or STRIPE_WEBHOOK_SECRET) — credit purchases are disabled.');
+  }
+  if (!process.env.RESEND_API_KEY || !process.env.SUPPORT_EMAIL_TO) {
+    console.warn('WARNING: Support-form email is not configured (missing RESEND_API_KEY and/or SUPPORT_EMAIL_TO) — messages will only be saved to the database.');
+  }
   app.listen(PORT, () => console.log(`PantryPal server running on port ${PORT}`));
 });
