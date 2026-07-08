@@ -1844,8 +1844,10 @@ function renderTabs(){
     {id:'grocery',icon:'🛒',label:'Grocery'},
     {id:'cook',icon:'✦',label:'Recipes'},
     {id:'planner',icon:'🗓',label:'Planner'},
-    {id:'settings',icon:'⚙',label:'Settings'}
+    {id:'settings',icon:'⚙',label:'Settings'},
+    {id:'help',icon:'❓',label:'Help'}
   ];
+  if(ui.isOwnerFamily) tabs.push({id:'admin',icon:'🛡',label:'Admin'});
   return '<div class="pp-tabs">'+tabs.map(t=>
     '<button class="pp-tab '+(ui.tab===t.id?'active':'')+'" data-action="set-tab" data-tab="'+t.id+'">'+t.icon+' '+t.label+'</button>'
   ).join('')+'</div>';
@@ -1882,6 +1884,8 @@ function renderTab(){
   if(ui.tab==='cook')    return renderCook();
   if(ui.tab==='planner') return renderPlanner();
   if(ui.tab==='settings') return renderSettings();
+  if(ui.tab==='help') return renderSettingsHelp();
+  if(ui.tab==='admin') return ui.isOwnerFamily?renderSettingsAdmin():renderSettingsHelp();
   return '';
 }
 
@@ -2970,10 +2974,8 @@ function renderSettings(){
     {id:'categories',label:'Categories'},
     {id:'stores',label:'Stores'},
     {id:'cuisines',label:'Cuisines'},
-    {id:'household',label:'Household & Account'},
-    {id:'help',label:'Help'}
+    {id:'household',label:'Household & Account'}
   ];
-  if(ui.isOwnerFamily) sections.push({id:'admin',label:'Admin'});
   const nav=sections.map(s=>'<button class="pill-btn '+(ui.settingsSection===s.id?'active':'')+'" data-action="set-settings-section" data-val="'+s.id+'">'+s.label+'</button>').join('');
 
   let body='';
@@ -2981,8 +2983,6 @@ function renderSettings(){
   else if(ui.settingsSection==='stores') body=renderSettingsStores();
   else if(ui.settingsSection==='cuisines') body=renderSettingsCuisines();
   else if(ui.settingsSection==='household') body=renderSettingsHousehold();
-  else if(ui.settingsSection==='help') body=renderSettingsHelp();
-  else if(ui.settingsSection==='admin') body=ui.isOwnerFamily?renderSettingsAdmin():renderSettingsCats();
 
   return '<div class="settings-nav">'+nav+'</div>'+body;
 }
