@@ -650,6 +650,7 @@ let ui={
   auditLog:[], auditLoaded:false,
   myFirstName:'', myLastName:'', myAccentColor:null, myTheme:'light', profileMsg:'', resetPasswordResult:null,
   householdSubSection:'household', adminSubSection:'onboard', acctEditField:null,
+  deleteAcctErr:'', deleteAcctLoading:false,
   helpType:'Bug report', helpSubmitting:false, helpSent:false, helpError:'',
   supportMessages:[], supportMessagesLoaded:false,
   adminUsage:null, adminUsageLoaded:false,
@@ -3377,8 +3378,35 @@ function renderHouseholdAccount(){
     :'')+
   '</div>';
 
+  const isLastMember=ui.membersLoaded&&ui.familyMembers.length===1;
+  const blockedOwner=isLastMember&&ui.isOwnerFamily;
+  const deleteBody=editing==='delete'?(
+    blockedOwner?
+      '<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px;">'+
+        '<p style="font-size:12.5px;color:var(--ink-soft);">This is the primary account and can\'t be deleted here. Reach out via Help if you need to close it.</p>'+
+      '</div>'
+    :
+      '<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px;">'+
+        '<p style="font-size:12.5px;color:var(--orange);font-weight:700;margin-bottom:10px;">'+
+          (isLastMember?'You\'re the last member of this household — deleting your account permanently deletes all of its data (inventory, cookbook, grocery list, planner). This can\'t be undone.':'This permanently deletes your account. Other household members and shared data are unaffected.')+
+        '</p>'+
+        '<form data-form="delete-account">'+
+          '<div class="field" style="margin-bottom:10px;"><label>Password</label><input type="password" id="delete-acct-pw" autocomplete="current-password" required></div>'+
+          '<div class="field" style="margin-bottom:10px;"><label>Type DELETE to confirm</label><input id="delete-acct-confirm" required></div>'+
+          (ui.deleteAcctErr?'<p style="color:var(--orange);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.deleteAcctErr)+'</p>':'')+
+          '<button type="submit" class="btn btn-primary" style="background:var(--orange);border-color:var(--orange);" '+(ui.deleteAcctLoading?'disabled':'')+'>'+(ui.deleteAcctLoading?'Deleting…':'Delete my account')+'</button>'+
+        '</form>'+
+      '</div>'
+  ):'';
+  const deleteRow='<div class="settings-row" style="flex-direction:column;align-items:stretch;border-color:var(--orange);">'+
+    '<div style="display:flex;align-items:center;gap:10px;">'+fieldLabel('Danger zone')+
+      '<span class="settings-name" style="color:var(--orange);">Delete account</span>'+
+      pencil('delete')+
+    '</div>'+deleteBody+
+  '</div>';
+
   return '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:12px;">Only you see this — signing in as someone else in this household shows their own name, password, and personalization, not yours.</p>'+
-    nameRow+emailRow+passwordRow+themeRow+accentRow;
+    nameRow+emailRow+passwordRow+themeRow+accentRow+deleteRow;
 }
 
 const HELP_INQUIRY_TYPES=['Bug report','Billing question','Feature request','Account or login issue','Other'];
@@ -3764,6 +3792,20 @@ async function changeEmail(){
   render();
 }
 
+async function deleteAccount(){
+  const password=document.getElementById('delete-acct-pw').value;
+  const confirmText=document.getElementById('delete-acct-confirm').value;
+  ui.deleteAcctErr='';
+  if(confirmText!=='DELETE'){ ui.deleteAcctErr='Type DELETE (all caps) to confirm.'; render(); return; }
+  if(!confirm('This is permanent and cannot be undone. Delete your account?')) return;
+  ui.deleteAcctLoading=true;render();
+  const data=await api('DELETE','account',{password});
+  ui.deleteAcctLoading=false;
+  if(data&&data.ok){ signOut(); return; }
+  ui.deleteAcctErr=lastApiStatus===401?'Password is incorrect.':lastApiStatus===403?(data&&data.error||'This account can\'t be deleted here.'):'Couldn\'t delete account — try again.';
+  render();
+}
+
 async function saveProfile(){
   const firstName=document.getElementById('profile-first-name').value;
   const lastName=document.getElementById('profile-last-name').value;
@@ -4141,7 +4183,7 @@ document.addEventListener('click',e=>{
     case 'set-admin-sub': ui.adminSubSection=a.val;render();break;
     case 'toggle-acct-edit':
       ui.acctEditField=ui.acctEditField===a.field?null:a.field;
-      ui.profileMsg='';ui.accountMsg='';ui.accountErr='';ui.emailMsg='';ui.emailErr='';
+      ui.profileMsg='';ui.accountMsg='';ui.accountErr='';ui.emailMsg='';ui.emailErr='';ui.deleteAcctErr='';
       render();break;
     case 'open-billing': ui.tab='settings';ui.settingsSection='household';ui.householdSubSection='billing';render();break;
   }
@@ -4258,6 +4300,7 @@ document.addEventListener('submit',e=>{
   else if(form.dataset.form==='signup'){submitSignup();}
   else if(form.dataset.form==='change-password'){changePassword();}
   else if(form.dataset.form==='change-email'){changeEmail();}
+  else if(form.dataset.form==='delete-account'){deleteAccount();}
 });
 
 // ─── ERROR REPORTING ──────────────────────────────────────────────────────

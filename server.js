@@ -422,6 +422,57 @@ app.post('/api/account/change-email', auth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// Deletes the caller's own account. If they're the last member of their family,
+// the entire household (all its data) is cascade-deleted too — irreversible, so it
+// requires a password re-check. The primary owner family can't be cascade-deleted
+// this way since it's the account that funds the shared Anthropic API key.
+app.delete('/api/account', auth, async (req, res) => {
+  const { password } = req.body || {};
+  if (!password) return res.status(400).json({ error: 'Password is required' });
+  const { rows: userRows } = await pool.query('SELECT id, email, password_hash FROM users WHERE id = $1', [req.user.userId]);
+  if (!userRows[0] || !(await bcrypt.compare(password, userRows[0].password_hash))) {
+    return res.status(401).json({ error: 'Password is incorrect' });
+  }
+  const { rows: memberRows } = await pool.query('SELECT id FROM users WHERE family_id = $1', [req.user.familyId]);
+  const isLastMember = memberRows.length === 1;
+
+  if (!isLastMember) {
+    await pool.query('UPDATE invites SET created_by_user_id = NULL WHERE created_by_user_id = $1', [req.user.userId]);
+    await pool.query('UPDATE invites SET redeemed_by_user_id = NULL WHERE redeemed_by_user_id = $1', [req.user.userId]);
+    await pool.query('DELETE FROM password_resets WHERE user_id = $1', [req.user.userId]);
+    await pool.query('DELETE FROM users WHERE id = $1', [req.user.userId]);
+    await logAudit(req.user.familyId, req.user.userId, 'self_delete_account', userRows[0].email);
+    return res.json({ ok: true, deletedFamily: false });
+  }
+
+  if (req.user.isOwnerFamily) {
+    return res.status(403).json({ error: 'This is the primary account and can\'t be self-deleted. Contact support if you need to close it.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM password_resets WHERE user_id = $1', [req.user.userId]);
+    await client.query('DELETE FROM invites WHERE family_id = $1', [req.user.familyId]);
+    await client.query('DELETE FROM support_messages WHERE family_id = $1', [req.user.familyId]);
+    await client.query('DELETE FROM api_usage WHERE family_id = $1', [req.user.familyId]);
+    await client.query('DELETE FROM client_errors WHERE family_id = $1', [req.user.familyId]);
+    await client.query('UPDATE admin_audit_log SET family_id = NULL WHERE family_id = $1', [req.user.familyId]);
+    await client.query('UPDATE credit_purchases SET family_id = NULL WHERE family_id = $1', [req.user.familyId]);
+    await client.query('UPDATE shared_recipes SET origin_family_id = NULL WHERE origin_family_id = $1', [req.user.familyId]);
+    await client.query('DELETE FROM app_state WHERE family_id = $1', [req.user.familyId]);
+    await client.query('DELETE FROM users WHERE family_id = $1', [req.user.familyId]);
+    await client.query('DELETE FROM families WHERE id = $1', [req.user.familyId]);
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+  res.json({ ok: true, deletedFamily: true });
+});
+
 // Public lookup so the signup screen can tell someone whether their code joins an
 // existing household or starts a brand-new one, before they commit to an account.
 // Deliberately doesn't return the household's name — just the shape of what happens.
