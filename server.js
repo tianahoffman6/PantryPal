@@ -169,6 +169,7 @@ async function initDB() {
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT');
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS accent_color TEXT');
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS theme TEXT DEFAULT 'light'");
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ');
   await backfillOwnerFamily();
   await swapAppStatePrimaryKey();
   // Self-healing: families created before roles were assigned correctly get their
@@ -195,6 +196,8 @@ function auth(req, res, next) {
   if (!header) return res.status(401).json({ error: 'No token' });
   try {
     req.user = jwt.verify(header.replace('Bearer ', ''), JWT_SECRET);
+    // Fire-and-forget activity ping for admin usage stats — never blocks the request.
+    pool.query('UPDATE users SET last_seen_at = now() WHERE id = $1', [req.user.userId]).catch(() => {});
     next();
   } catch {
     res.status(401).json({ error: 'Invalid token' });
@@ -467,11 +470,39 @@ app.post('/api/family/members/:id/split-off', auth, async (req, res) => {
 app.get('/api/admin/families', auth, async (req, res) => {
   if (!req.user.isOwnerFamily) return res.status(403).json({ error: 'Owner access only' });
   const { rows } = await pool.query(`
-    SELECT f.id, f.name, f.credits, f.is_owner_family, f.created_at, COUNT(u.id)::int AS member_count
+    SELECT f.id, f.name, f.credits, f.is_owner_family, f.created_at,
+      COUNT(u.id)::int AS member_count,
+      MAX(u.last_seen_at) AS last_seen_at,
+      COALESCE((SELECT jsonb_array_length(value) FROM app_state WHERE family_id=f.id AND key='inventory' AND jsonb_typeof(value)='array'), 0) AS inventory_count,
+      COALESCE((SELECT jsonb_array_length(value) FROM app_state WHERE family_id=f.id AND key='cookbook' AND jsonb_typeof(value)='array'), 0) AS cookbook_count,
+      COALESCE((SELECT jsonb_array_length(value) FROM app_state WHERE family_id=f.id AND key='grocery' AND jsonb_typeof(value)='array'), 0) AS grocery_count,
+      COALESCE((SELECT count(*) FROM app_state, jsonb_object_keys(value) WHERE family_id=f.id AND key='planner' AND jsonb_typeof(value)='object'), 0)::int AS planner_days
     FROM families f LEFT JOIN users u ON u.family_id = f.id
     GROUP BY f.id ORDER BY f.created_at ASC
   `);
   res.json({ families: rows });
+});
+
+// Owner-only: full read-only snapshot of another household's data, for effectiveness
+// tracking. Every call is audit-logged under the owner's own family.
+app.get('/api/admin/families/:id/data', auth, async (req, res) => {
+  if (!req.user.isOwnerFamily) return res.status(403).json({ error: 'Owner access only' });
+  const { rows: caller } = await pool.query('SELECT role FROM users WHERE id = $1', [req.user.userId]);
+  if (!caller[0] || caller[0].role !== 'owner') return res.status(403).json({ error: 'Owner access only' });
+  const targetId = Number(req.params.id);
+  if (!targetId) return res.status(400).json({ error: 'Invalid household id' });
+  const { rows: fam } = await pool.query('SELECT id, name FROM families WHERE id = $1', [targetId]);
+  if (!fam.length) return res.status(404).json({ error: 'Household not found' });
+
+  const { rows: stateRows } = await pool.query('SELECT key, value FROM app_state WHERE family_id = $1', [targetId]);
+  const state = {};
+  stateRows.forEach(r => { state[r.key] = r.value; });
+  const { rows: members } = await pool.query(
+    'SELECT email, first_name, last_name, role, last_seen_at, created_at FROM users WHERE family_id = $1 ORDER BY created_at', [targetId]
+  );
+
+  await logAudit(req.user.familyId, req.user.userId, 'view_family_data', fam[0].name);
+  res.json({ family: fam[0], members, state });
 });
 
 app.get('/api/family/audit-log', auth, async (req, res) => {

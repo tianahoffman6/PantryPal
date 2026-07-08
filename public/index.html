@@ -476,7 +476,7 @@ function signOut(){
   ui.membersLoaded=false;ui.familyMembers=[];
   ui.creditsLoaded=false;ui.credits=null;
   ui.billingLoaded=false;ui.billingHistory=[];
-  ui.adminLoaded=false;ui.adminFamilies=[];
+  ui.adminLoaded=false;ui.adminFamilies=[];ui.householdDetailModal=null;ui.householdDetailLoading=false;
   ui.auditLoaded=false;ui.auditLog=[];
   ui.inviteCode='';ui.newInviteCode='';
   ui.accountMsg='';ui.accountErr='';ui.emailMsg='';ui.emailErr='';
@@ -631,6 +631,7 @@ let ui={
   householdSubSection:'household', adminSubSection:'onboard', acctEditField:null,
   myUserId:null, myRole:'member', myEmail:'',
   adminFamilies:[], adminLoaded:false, newInviteCode:'', newInviteExpires:'', newInviteLoading:false,
+  householdDetailModal:null, householdDetailLoading:false, // {family, members, state}
   accountMsg:'', accountErr:'', emailMsg:'', emailErr:'',
   billingHistory:[], billingLoaded:false,
   collapsedGroups:new Set(),
@@ -1617,6 +1618,7 @@ function renderModal(){
   else if(ui.recipeViewModal){ root.innerHTML=renderRecipeViewModal(); }
   else if(ui.assignModal){ root.innerHTML=renderAssignModal(); }
   else if(ui.showAddItem){ root.innerHTML=renderItemFormModal(); }
+  else if(ui.householdDetailModal){ root.innerHTML=renderHouseholdDetailModal(); }
   else { root.innerHTML=''; return; }
   setTimeout(()=>{const el=document.getElementById('planner-search-input')||document.querySelector('#modal-root input[name="name"]');if(el)el.focus();},0);
 }
@@ -3264,10 +3266,36 @@ function renderAdminOnboard(){
     '</div>';
 }
 
+function formatLastSeen(dateStr){
+  if(!dateStr) return 'never logged in';
+  const diffMs=Date.now()-new Date(dateStr).getTime();
+  const mins=Math.round(diffMs/60000);
+  if(mins<1) return 'active now';
+  if(mins<60) return mins+'m ago';
+  const hrs=Math.round(mins/60);
+  if(hrs<24) return hrs+'h ago';
+  const days=Math.round(hrs/24);
+  if(days<30) return days+'d ago';
+  return new Date(dateStr).toLocaleDateString();
+}
 function renderAdminHouseholds(){
   const rows = ui.adminFamilies.map(f=>
-    '<div class="settings-row"><span style="font-weight:700;">'+h(f.name)+(f.is_owner_family?' (you)':'')+'</span>'+
-      '<span style="color:var(--ink-soft);font-size:12px;">'+(f.credits===null?'Unlimited':f.credits+' credits')+' · '+f.member_count+' member'+(f.member_count===1?'':'s')+' · joined '+h(new Date(f.created_at).toLocaleDateString())+'</span></div>'
+    '<div class="settings-row" style="flex-direction:column;align-items:stretch;">'+
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'+
+        '<span style="font-weight:700;">'+h(f.name)+(f.is_owner_family?' (you)':'')+'</span>'+
+        '<span style="color:var(--ink-soft);font-size:12px;">'+(f.credits===null?'Unlimited':f.credits+' credits')+' · '+f.member_count+' member'+(f.member_count===1?'':'s')+' · joined '+h(new Date(f.created_at).toLocaleDateString())+'</span>'+
+        (!f.is_owner_family?'<button class="btn-ghost" data-action="view-family-data" data-id="'+f.id+'" data-name="'+h(f.name)+'" style="margin-left:auto;">👁 View data</button>':'')+
+      '</div>'+
+      (!f.is_owner_family?
+        '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-soft);font-weight:700;margin-top:6px;">'+
+          '<span>🕐 '+h(formatLastSeen(f.last_seen_at))+'</span>'+
+          '<span>🥫 '+f.inventory_count+' kitchen items</span>'+
+          '<span>📖 '+f.cookbook_count+' recipes</span>'+
+          '<span>📅 '+f.planner_days+' planner days</span>'+
+          '<span>🛒 '+f.grocery_count+' grocery items</span>'+
+        '</div>'
+      :'')+
+    '</div>'
   ).join('');
   return '<div class="form-card">'+
       '<div class="field">'+
@@ -3346,6 +3374,63 @@ async function loadAdminFamilies(){
   const data=await api('GET','admin/families');
   if(data) ui.adminFamilies=data.families;
   render();
+}
+
+async function viewFamilyData(id,name){
+  if(!confirm('View "'+name+'"\'s private kitchen, recipes, and planner data? This is logged for accountability.')) return;
+  ui.householdDetailLoading=true;ui.householdDetailModal={family:{id,name},members:[],state:{}};render();
+  const data=await api('GET','admin/families/'+id+'/data');
+  ui.householdDetailLoading=false;
+  if(data) ui.householdDetailModal=data;
+  else { ui.householdDetailModal=null; alert('Could not load that household\'s data.'); }
+  render();
+}
+
+function renderHouseholdDetailModal(){
+  const {family,members,state:s}=ui.householdDetailModal;
+  if(ui.householdDetailLoading){
+    return '<div class="modal-overlay" id="pp-modal-overlay"><div class="modal-sheet"><div class="status-card"><div class="spinner"></div>Loading '+h(family.name)+'\'s data…</div></div></div>';
+  }
+  const inv=s.inventory||[];
+  const cb=s.cookbook||[];
+  const groc=(s.grocery||[]).filter(g=>!g.checked);
+  const plannerDays=Object.keys(s.planner||{}).sort();
+
+  const memberRows=(members||[]).map(m=>
+    '<div class="settings-row"><span style="font-weight:700;">'+h([m.first_name,m.last_name].filter(Boolean).join(' ')||m.email)+' <span style="color:var(--ink-soft);font-weight:600;font-size:11px;">'+h(m.role)+'</span></span>'+
+      '<span style="color:var(--ink-soft);font-size:12px;">'+h(m.email)+' · '+h(formatLastSeen(m.last_seen_at))+'</span></div>'
+  ).join('');
+
+  const invRows=inv.slice(0,60).map(i=>'<li>'+h(i.name)+' <span style="color:var(--ink-soft);">— '+h(i.quantity)+' '+h(i.unit||'')+', '+h(i.category)+'</span></li>').join('');
+  const cbRows=cb.slice(0,60).map(r=>'<li>'+h(r.title)+' <span style="color:var(--ink-soft);">— '+h(r.cuisine||'')+'</span></li>').join('');
+  const grocRows=groc.slice(0,60).map(g=>'<li>'+h(g.name)+'</li>').join('');
+  const plannerRows=plannerDays.slice(-14).map(d=>{
+    const day=s.planner[d];
+    const meals=MEAL_SLOTS.map(slot=>{
+      const list=slotMeals(day,slot);
+      return list.length?slot+': '+list.map(h).join(', '):null;
+    }).filter(Boolean).join(' · ');
+    return meals?'<li><strong>'+h(d)+'</strong> — '+meals+'</li>':'';
+  }).filter(Boolean).join('');
+
+  const section=(title,count,rows,emptyMsg)=>
+    '<div style="margin-bottom:18px;"><div style="font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);margin-bottom:8px;">'+title+' ('+count+')</div>'+
+    (rows?'<ul class="ing-list" style="max-height:180px;overflow-y:auto;">'+rows+'</ul>'+(count>60?'<div style="font-size:11px;color:var(--ink-soft);margin-top:4px;">Showing first 60.</div>':'')
+      :'<div style="font-size:12px;color:var(--ink-soft);">'+emptyMsg+'</div>')+
+    '</div>';
+
+  return '<div class="modal-overlay" id="pp-modal-overlay">'+
+    '<div class="modal-sheet modal-sheet-large">'+
+      '<button class="modal-close" data-action="close-household-detail">×</button>'+
+      '<h2 class="modal-title" style="margin-bottom:4px;">'+h(family.name)+'</h2>'+
+      '<div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-bottom:14px;">Admin view — read-only</div>'+
+      '<div style="margin-bottom:18px;">'+(memberRows||'<div style="font-size:12px;color:var(--ink-soft);">No members.</div>')+'</div>'+
+      section('🥫 Kitchen inventory',inv.length,invRows,'No items in their kitchen yet.')+
+      section('📖 Cookbook',cb.length,cbRows,'No saved recipes yet.')+
+      section('🛒 Grocery list',groc.length,grocRows,'Nothing on their grocery list.')+
+      section('📅 Planner (recent days with meals)',plannerDays.length,plannerRows,'No meals planned yet.')+
+    '</div>'+
+  '</div>';
 }
 
 async function loadAuditLog(){
@@ -3610,6 +3695,8 @@ document.addEventListener('click',e=>{
       if(r){ ui.assignModal=null; ui.recipeViewModal={recipe:r,large:false}; renderModal(); }
     }break;
     case 'close-recipe-view': ui.recipeViewModal=null; renderModal(); break;
+    case 'view-family-data': viewFamilyData(Number(a.id),a.name); break;
+    case 'close-household-detail': ui.householdDetailModal=null; renderModal(); break;
     case 'toggle-recipe-view-size': if(ui.recipeViewModal){ ui.recipeViewModal.large=!ui.recipeViewModal.large; renderModal(); } break;
     // assign-to-planner modal (used from the cookbook and the planner's recipe browser)
     case 'open-assign-modal': openAssignModalFor(a.title); break;
