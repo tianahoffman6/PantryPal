@@ -478,7 +478,7 @@ function signOut(){
   ui.billingLoaded=false;ui.billingHistory=[];
   ui.adminLoaded=false;ui.adminFamilies=[];ui.householdDetailModal=null;ui.householdDetailLoading=false;
   ui.auditLoaded=false;ui.auditLog=[];
-  ui.inviteCode='';ui.newInviteCode='';
+  ui.inviteCode='';ui.newInviteCode='';ui.pendingInvites=[];ui.invitesLoaded=false;
   ui.accountMsg='';ui.accountErr='';ui.emailMsg='';ui.emailErr='';
   ui.myFirstName='';ui.myLastName='';ui.profileMsg='';ui.resetPasswordResult=null;
   ui.myAccentColor=null;ui.myTheme='light';applyTheme('light');
@@ -638,7 +638,10 @@ let ui={
   newStore:'', newCuisine:'', householdEdit:'',
   // auth
   loginError:'', syncError:'', authMode:'login', signupError:'',
+  forgotSent:false, forgotError:'', forgotLoading:false,
+  resetToken:null, resetError:'', resetDone:false, resetLoading:false,
   inviteCode:'', inviteExpires:'', invitingLoading:false,
+  pendingInvites:[], invitesLoaded:false,
   credits:null, creditsLoaded:false, checkoutLoading:false, checkoutMessage:'',
   familyMembers:[], membersLoaded:false, isOwnerFamily:false, meLoaded:false,
   auditLog:[], auditLoaded:false,
@@ -1406,11 +1409,38 @@ function renderSyncBanner(){
 
 function renderLogin(){
   const signup=ui.authMode==='signup';
+  const forgot=ui.authMode==='forgot';
+  const reset=ui.authMode==='reset';
   document.getElementById('app').innerHTML=
     '<div class="pp-login-wrap">'+
       '<div class="pp-login-card">'+
         '<div class="pp-logo" style="margin-bottom:4px;">pantry<span>pal</span></div>'+
-        (signup?
+        (reset?
+          (ui.resetDone?
+            '<p style="color:var(--green);font-size:13px;font-weight:700;margin-bottom:18px;">✓ Password updated — you can sign in now.</p>'+
+            '<button class="btn btn-primary" data-action="set-auth-mode" data-val="login" style="width:100%;">Back to sign in</button>'
+          :
+            '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:18px;">Set a new password</p>'+
+            '<form data-form="reset-password">'+
+              '<div class="field" style="margin-bottom:12px;"><label>New password</label><input type="password" id="reset-new-password" autocomplete="new-password" required></div>'+
+              (ui.resetError?'<p style="color:var(--orange);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.resetError)+'</p>':'')+
+              '<button type="submit" class="btn btn-primary" style="width:100%;" '+(ui.resetLoading?'disabled':'')+'>'+(ui.resetLoading?'Saving…':'Set new password')+'</button>'+
+            '</form>'
+          )
+        :forgot?
+          (ui.forgotSent?
+            '<p style="color:var(--green);font-size:13px;font-weight:700;margin-bottom:18px;">✓ If that email has an account, we\'ve sent a reset link.</p>'+
+            '<button class="btn-ghost" data-action="set-auth-mode" data-val="login" style="width:100%;">Back to sign in</button>'
+          :
+            '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:18px;">Enter your email and we\'ll send a reset link</p>'+
+            '<form data-form="forgot-password">'+
+              '<div class="field" style="margin-bottom:12px;"><label>Email</label><input type="email" id="forgot-email" autocomplete="email" required></div>'+
+              (ui.forgotError?'<p style="color:var(--orange);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.forgotError)+'</p>':'')+
+              '<button type="submit" class="btn btn-primary" style="width:100%;" '+(ui.forgotLoading?'disabled':'')+'>'+(ui.forgotLoading?'Sending…':'Send reset link')+'</button>'+
+            '</form>'+
+            '<button class="btn-ghost" data-action="set-auth-mode" data-val="login" style="width:100%;margin-top:10px;">Back to sign in</button>'
+          )
+        :signup?
           '<p style="color:var(--ink-soft);font-size:13px;margin-bottom:18px;">Sign up with your invite code</p>'+
           '<form data-form="signup">'+
             '<div class="field" style="margin-bottom:12px;"><label>Invite code</label><input type="text" id="signup-invite" required data-change="signup-invite-check">'+
@@ -1431,7 +1461,8 @@ function renderLogin(){
             (ui.loginError?'<p style="color:var(--orange);font-size:12.5px;font-weight:700;margin-bottom:10px;">'+h(ui.loginError)+'</p>':'')+
             '<button type="submit" class="btn btn-primary" style="width:100%;">Sign in</button>'+
           '</form>'+
-          '<button class="btn-ghost" data-action="set-auth-mode" data-val="signup" style="width:100%;margin-top:10px;">Have an invite code? Sign up</button>'
+          '<button class="btn-ghost" data-action="set-auth-mode" data-val="forgot" style="width:100%;margin-top:10px;font-size:12.5px;">Forgot password?</button>'+
+          '<button class="btn-ghost" data-action="set-auth-mode" data-val="signup" style="width:100%;margin-top:4px;">Have an invite code? Sign up</button>'
         )+
       '</div>'+
     '</div>';
@@ -1452,6 +1483,36 @@ async function submitLogin(){
     ui.loginError='Could not connect — try again.';
     renderLogin();
   }
+}
+
+async function submitForgotPassword(){
+  const email=document.getElementById('forgot-email').value;
+  ui.forgotError='';ui.forgotLoading=true;renderLogin();
+  try{
+    const res=await fetch('/api/forgot-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});
+    ui.forgotLoading=false;
+    if(res.ok){ ui.forgotSent=true; }
+    else{ const d=await res.json().catch(()=>({}));ui.forgotError=d.error||'Something went wrong — try again.'; }
+  }catch(e){
+    ui.forgotLoading=false;
+    ui.forgotError='Could not connect — try again.';
+  }
+  renderLogin();
+}
+
+async function submitResetPassword(){
+  const newPassword=document.getElementById('reset-new-password').value;
+  ui.resetError='';ui.resetLoading=true;renderLogin();
+  try{
+    const res=await fetch('/api/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:ui.resetToken,newPassword})});
+    ui.resetLoading=false;
+    if(res.ok){ ui.resetDone=true; }
+    else{ const d=await res.json().catch(()=>({}));ui.resetError=d.error||'Something went wrong — try again.'; }
+  }catch(e){
+    ui.resetLoading=false;
+    ui.resetError='Could not connect — try again.';
+  }
+  renderLogin();
 }
 
 async function checkSignupInvite(code){
@@ -1503,6 +1564,13 @@ async function submitSignup(){
 }
 
 async function boot(){
+  const resetToken=new URLSearchParams(window.location.search).get('resetToken');
+  if(resetToken){
+    history.replaceState(null,'',window.location.pathname);
+    ui.authMode='reset';ui.resetToken=resetToken;
+    renderLogin();
+    return;
+  }
   if(!authToken){ renderLogin(); return; }
   document.getElementById('app').innerHTML='<div class="pp-boot">Loading PantryPal…</div>';
   const ok=await loadState();
@@ -3085,6 +3153,7 @@ function renderSettingsHousehold(){
   if(!ui.creditsLoaded) loadCredits();
   if(!ui.membersLoaded) loadMembers();
   if(!ui.billingLoaded) loadBillingHistory();
+  if(!ui.invitesLoaded) loadPendingInvites();
   const iAmOwner = ui.myRole==='owner';
   if(iAmOwner&&!ui.auditLoaded) loadAuditLog();
 
@@ -3148,8 +3217,25 @@ function renderHouseholdMain(iAmOwner){
         '<button class="btn btn-primary" data-action="generate-invite" '+(ui.invitingLoading?'disabled':'')+'>'+(ui.invitingLoading?'Generating…':'Generate invite code')+'</button>'+
         (ui.inviteCode?'<div class="form-card" style="margin-top:12px;background:var(--bg);"><code style="font-size:15px;font-weight:800;">'+h(ui.inviteCode)+'</code>'+
           '<p style="color:var(--ink-soft);font-size:12px;margin-top:6px;">Expires '+h(new Date(ui.inviteExpires).toLocaleDateString())+'. Share this code — they\'ll enter it on the sign-up screen.</p></div>':'')+
+        renderPendingInvitesList(ui.pendingInvites.filter(i=>!i.new_family))+
       '</div>'+
     '</div>';
+}
+
+function renderPendingInvitesList(invites){
+  if(!ui.invitesLoaded) return '';
+  if(!invites.length) return '';
+  const rows=invites.map(inv=>
+    '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--border);">'+
+      '<code style="font-size:12.5px;font-weight:700;flex:1;">'+h(inv.code)+'</code>'+
+      '<span style="color:var(--ink-soft);font-size:11px;">expires '+h(new Date(inv.expires_at).toLocaleDateString())+'</span>'+
+      '<button class="btn-icon" data-action="revoke-invite" data-code="'+h(inv.code)+'" style="color:var(--orange);">Revoke</button>'+
+    '</div>'
+  ).join('');
+  return '<div style="margin-top:14px;">'+
+    '<div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);margin-bottom:4px;">Pending invites</div>'+
+    rows+
+  '</div>';
 }
 
 function renderHouseholdBilling(){
@@ -3321,6 +3407,7 @@ function renderSettingsAdmin(){
   if(ui.adminSubSection==='support'&&!ui.supportMessagesLoaded) loadSupportMessages();
   if(ui.adminSubSection==='usage'&&!ui.adminUsageLoaded) loadAdminUsage();
   if(ui.adminSubSection==='errors'&&!ui.adminErrorsLoaded) loadAdminErrors();
+  if(ui.adminSubSection==='onboard'&&!ui.invitesLoaded) loadPendingInvites();
   const subs=[{id:'onboard',label:'Onboard'},{id:'households',label:'All households'},{id:'support',label:'Support inbox'},{id:'usage',label:'Usage'},{id:'errors',label:'Errors'}];
   const subNav=subs.map(s=>'<button class="pill-btn '+(ui.adminSubSection===s.id?'active':'')+'" data-action="set-admin-sub" data-val="'+s.id+'">'+s.label+'</button>').join('');
   const body=ui.adminSubSection==='households'?renderAdminHouseholds():ui.adminSubSection==='support'?renderAdminSupport():ui.adminSubSection==='usage'?renderAdminUsage():ui.adminSubSection==='errors'?renderAdminErrors():renderAdminOnboard();
@@ -3397,6 +3484,7 @@ function renderAdminOnboard(){
         '<button class="btn btn-primary" data-action="generate-new-family-invite" '+(ui.newInviteLoading?'disabled':'')+'>'+(ui.newInviteLoading?'Generating…':'Generate new-family invite code')+'</button>'+
         (ui.newInviteCode?'<div class="form-card" style="margin-top:12px;background:var(--bg);"><code style="font-size:15px;font-weight:800;">'+h(ui.newInviteCode)+'</code>'+
           '<p style="color:var(--ink-soft);font-size:12px;margin-top:6px;">Expires '+h(new Date(ui.newInviteExpires).toLocaleDateString())+'.</p></div>':'')+
+        renderPendingInvitesList(ui.pendingInvites.filter(i=>i.new_family))+
       '</div>'+
     '</div>';
 }
@@ -3600,7 +3688,7 @@ async function generateInvite(){
   ui.invitingLoading=true;render();
   const data=await api('POST','invites',{});
   ui.invitingLoading=false;
-  if(data){ ui.inviteCode=data.code; ui.inviteExpires=data.expiresAt; }
+  if(data){ ui.inviteCode=data.code; ui.inviteExpires=data.expiresAt; ui.invitesLoaded=false; }
   render();
 }
 
@@ -3608,7 +3696,21 @@ async function generateNewFamilyInvite(){
   ui.newInviteLoading=true;render();
   const data=await api('POST','invites',{newFamily:true});
   ui.newInviteLoading=false;
-  if(data){ ui.newInviteCode=data.code; ui.newInviteExpires=data.expiresAt; }
+  if(data){ ui.newInviteCode=data.code; ui.newInviteExpires=data.expiresAt; ui.invitesLoaded=false; }
+  render();
+}
+
+async function loadPendingInvites(){
+  ui.invitesLoaded=true;
+  const data=await api('GET','invites');
+  if(data) ui.pendingInvites=data.invites;
+  render();
+}
+
+async function revokeInvite(code){
+  if(!confirm('Revoke this invite? It can no longer be used to join.')) return;
+  const data=await api('DELETE','invites/'+encodeURIComponent(code));
+  if(data&&data.ok) ui.pendingInvites=ui.pendingInvites.filter(i=>i.code!==code);
   render();
 }
 
@@ -4013,8 +4115,13 @@ document.addEventListener('click',e=>{
     // auth
     case 'sign-out': signOut();break;
     case 'retry-boot': boot();break;
-    case 'set-auth-mode': ui.authMode=a.val;ui.loginError='';ui.signupError='';renderLogin();break;
+    case 'set-auth-mode':
+      ui.authMode=a.val;ui.loginError='';ui.signupError='';
+      ui.forgotSent=false;ui.forgotError='';
+      ui.resetDone=false;ui.resetError='';
+      renderLogin();break;
     case 'generate-invite': generateInvite();break;
+    case 'revoke-invite': revokeInvite(a.code);break;
     case 'generate-new-family-invite': generateNewFamilyInvite();break;
     case 'buy-credits': buyCredits(a.pack);break;
     case 'remove-member': removeMember(a.id,a.email);break;
@@ -4143,6 +4250,8 @@ document.addEventListener('submit',e=>{
   }
   else if(form.dataset.form==='add-cookbook'){addManualRecipe(fd);ui.browserShowAddForm=false;}
   else if(form.dataset.form==='login'){submitLogin();}
+  else if(form.dataset.form==='forgot-password'){submitForgotPassword();}
+  else if(form.dataset.form==='reset-password'){submitResetPassword();}
   else if(form.dataset.form==='signup'){submitSignup();}
   else if(form.dataset.form==='change-password'){changePassword();}
   else if(form.dataset.form==='change-email'){changeEmail();}

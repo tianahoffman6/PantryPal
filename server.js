@@ -223,6 +223,15 @@ async function initDB() {
     );
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS password_resets (
+      token TEXT PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id),
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS support_messages (
       id SERIAL PRIMARY KEY,
       family_id INTEGER REFERENCES families(id),
@@ -302,6 +311,43 @@ app.post('/api/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
   res.json({ token: await signToken(user) });
+});
+
+// Always responds the same way whether or not the email exists, so this can't
+// be used to check who has an account.
+app.post('/api/forgot-password', async (req, res) => {
+  if (isRateLimited('forgot:' + req.ip, 5, 15 * 60 * 1000)) {
+    return res.status(429).json({ error: 'Too many requests. Please wait a bit and try again.' });
+  }
+  const { email } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+  const { rows } = await pool.query('SELECT id, email FROM users WHERE email = $1', [email]);
+  if (rows.length) {
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await pool.query('INSERT INTO password_resets (token, user_id, expires_at) VALUES ($1, $2, $3)', [token, rows[0].id, expiresAt]);
+    const origin = `${req.protocol}://${req.get('host')}`;
+    await sendEmail({
+      to: rows[0].email,
+      subject: 'Reset your PantryPal password',
+      text: `We received a request to reset your PantryPal password.\n\nClick this link to set a new password (expires in 1 hour):\n${origin}/?resetToken=${token}\n\nIf you didn't request this, you can safely ignore this email.`,
+    });
+  }
+  res.json({ ok: true });
+});
+
+app.post('/api/reset-password', async (req, res) => {
+  const { token, newPassword } = req.body || {};
+  if (!token || !newPassword) return res.status(400).json({ error: 'Token and new password are required' });
+  const { rows } = await pool.query(
+    'SELECT user_id FROM password_resets WHERE token = $1 AND used_at IS NULL AND expires_at > now()',
+    [token]
+  );
+  if (!rows.length) return res.status(400).json({ error: 'This reset link is invalid or has expired.' });
+  const hash = await bcrypt.hash(newPassword, 10);
+  await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, rows[0].user_id]);
+  await pool.query('UPDATE password_resets SET used_at = now() WHERE token = $1', [token]);
+  res.json({ ok: true });
 });
 
 app.get('/api/me', auth, async (req, res) => {
@@ -459,6 +505,30 @@ app.post('/api/invites', auth, async (req, res) => {
   );
   await logAudit(req.user.familyId, req.user.userId, newFamily ? 'create_new_family_invite' : 'create_invite', null);
   res.json({ code, expiresAt, newFamily: scopeFamilyId === null });
+});
+
+app.get('/api/invites', auth, async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT code, expires_at, created_at, (family_id IS NULL) AS new_family
+     FROM invites
+     WHERE redeemed_at IS NULL AND expires_at > now()
+       AND (family_id = $1 OR (family_id IS NULL AND created_by_user_id IN (SELECT id FROM users WHERE family_id = $1)))
+     ORDER BY created_at DESC`,
+    [req.user.familyId]
+  );
+  res.json({ invites: rows });
+});
+
+app.delete('/api/invites/:code', auth, async (req, res) => {
+  const { rows } = await pool.query(
+    `UPDATE invites SET expires_at = now()
+     WHERE code = $1 AND redeemed_at IS NULL
+       AND (family_id = $2 OR (family_id IS NULL AND created_by_user_id IN (SELECT id FROM users WHERE family_id = $2)))
+     RETURNING code`,
+    [req.params.code, req.user.familyId]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Invite not found' });
+  res.json({ ok: true });
 });
 
 app.get('/api/family/members', auth, async (req, res) => {
@@ -722,28 +792,39 @@ app.get('/api/billing/history', auth, async (req, res) => {
   res.json({ purchases: rows });
 });
 
-// Best-effort — a failed email must never lose the message, since it's already
-// saved to support_messages before this is called. Silently no-ops if Resend
-// isn't configured (RESEND_API_KEY / SUPPORT_EMAIL_TO env vars unset).
-async function sendSupportEmail({ subject, inquiryType, message, fromEmail }) {
+// Best-effort — failures here must never lose the caller's own data (a support
+// message is already saved, a reset token is already stored). Silently no-ops
+// if Resend isn't configured (RESEND_API_KEY env var unset).
+async function sendEmail({ to, subject, text, replyTo }) {
   const apiKey = process.env.RESEND_API_KEY;
-  const to = process.env.SUPPORT_EMAIL_TO;
-  if (!apiKey || !to) return;
+  if (!apiKey) return false;
   try {
-    await fetch('https://api.resend.com/emails', {
+    const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: process.env.SUPPORT_FROM_EMAIL || 'PantryPal Support <onboarding@resend.dev>',
+        from: process.env.SUPPORT_FROM_EMAIL || 'PantryPal <onboarding@resend.dev>',
         to: [to],
-        reply_to: fromEmail,
-        subject: `[PantryPal ${inquiryType}] ${subject}`,
-        text: `From: ${fromEmail}\nType: ${inquiryType}\n\n${message}`,
+        ...(replyTo ? { reply_to: replyTo } : {}),
+        subject,
+        text,
       }),
     });
+    return res.ok;
   } catch (e) {
-    console.error('Support email send failed (message is still saved):', e.message);
+    console.error('Email send failed:', e.message);
+    return false;
   }
+}
+async function sendSupportEmail({ subject, inquiryType, message, fromEmail }) {
+  const to = process.env.SUPPORT_EMAIL_TO;
+  if (!to) return;
+  await sendEmail({
+    to,
+    replyTo: fromEmail,
+    subject: `[PantryPal ${inquiryType}] ${subject}`,
+    text: `From: ${fromEmail}\nType: ${inquiryType}\n\n${message}`,
+  });
 }
 
 app.post('/api/support', auth, async (req, res) => {
