@@ -647,6 +647,7 @@ let ui={
   helpType:'Bug report', helpSubmitting:false, helpSent:false, helpError:'',
   supportMessages:[], supportMessagesLoaded:false,
   adminUsage:null, adminUsageLoaded:false,
+  adminErrors:[], adminErrorsLoaded:false,
   myUserId:null, myRole:'member', myEmail:'',
   adminFamilies:[], adminLoaded:false, newInviteCode:'', newInviteExpires:'', newInviteLoading:false,
   householdDetailModal:null, householdDetailLoading:false, // {family, members, state}
@@ -2854,7 +2855,7 @@ async function generateRandomRecipes(){
     });
     saveCookbook();
     ui.generatingRandom=false;
-    noteCreditSpent();
+    noteCreditSpent(2);
   }catch(err){
     console.error('generateRandomRecipes error:', err);
     ui.generatingRandom=false;
@@ -3319,12 +3320,29 @@ function renderSettingsAdmin(){
   if(!ui.adminLoaded) loadAdminFamilies();
   if(ui.adminSubSection==='support'&&!ui.supportMessagesLoaded) loadSupportMessages();
   if(ui.adminSubSection==='usage'&&!ui.adminUsageLoaded) loadAdminUsage();
-  const subs=[{id:'onboard',label:'Onboard'},{id:'households',label:'All households'},{id:'support',label:'Support inbox'},{id:'usage',label:'Usage'}];
+  if(ui.adminSubSection==='errors'&&!ui.adminErrorsLoaded) loadAdminErrors();
+  const subs=[{id:'onboard',label:'Onboard'},{id:'households',label:'All households'},{id:'support',label:'Support inbox'},{id:'usage',label:'Usage'},{id:'errors',label:'Errors'}];
   const subNav=subs.map(s=>'<button class="pill-btn '+(ui.adminSubSection===s.id?'active':'')+'" data-action="set-admin-sub" data-val="'+s.id+'">'+s.label+'</button>').join('');
-  const body=ui.adminSubSection==='households'?renderAdminHouseholds():ui.adminSubSection==='support'?renderAdminSupport():ui.adminSubSection==='usage'?renderAdminUsage():renderAdminOnboard();
+  const body=ui.adminSubSection==='households'?renderAdminHouseholds():ui.adminSubSection==='support'?renderAdminSupport():ui.adminSubSection==='usage'?renderAdminUsage():ui.adminSubSection==='errors'?renderAdminErrors():renderAdminOnboard();
   return '<div class="settings-section-title">Admin</div>'+
     '<div class="settings-nav">'+subNav+'</div>'+
     body;
+}
+
+function renderAdminErrors(){
+  if(!ui.adminErrorsLoaded) return '<p style="color:var(--ink-soft);font-size:13px;">Loading…</p>';
+  if(!ui.adminErrors.length) return '<div class="status-card">No client errors reported. 🎉</div>';
+  const rows=ui.adminErrors.map(e=>
+    '<div class="settings-row" style="flex-direction:column;align-items:stretch;">'+
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'+
+        '<span style="font-weight:700;color:var(--orange);">'+h(e.message)+'</span>'+
+        '<span style="color:var(--ink-soft);font-size:11px;margin-left:auto;">'+h(new Date(e.created_at).toLocaleString())+'</span>'+
+      '</div>'+
+      '<div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-top:4px;">'+h(e.family_name||'Not signed in')+' · '+h(e.url||'')+'</div>'+
+      (e.stack?'<pre style="font-size:11px;color:var(--ink-soft);margin-top:8px;white-space:pre-wrap;overflow-x:auto;">'+h(e.stack)+'</pre>':'')+
+    '</div>'
+  ).join('');
+  return '<div class="form-card"><div class="field"><label>Recent client-side errors</label>'+rows+'</div></div>';
 }
 
 function renderAdminUsage(){
@@ -3469,8 +3487,8 @@ async function loadCredits(){
   render();
 }
 
-function noteCreditSpent(){
-  if(typeof ui.credits==='number'&&ui.credits>0) ui.credits--;
+function noteCreditSpent(amount){
+  if(typeof ui.credits==='number') ui.credits=Math.max(0,ui.credits-(amount||1));
 }
 
 function lowCreditChip(){
@@ -3504,6 +3522,13 @@ async function loadAdminUsage(){
   ui.adminUsageLoaded=true;
   const data=await api('GET','admin/usage');
   if(data) ui.adminUsage=data;
+  render();
+}
+
+async function loadAdminErrors(){
+  ui.adminErrorsLoaded=true;
+  const data=await api('GET','admin/client-errors');
+  if(data) ui.adminErrors=data.errors;
   render();
 }
 
@@ -4121,6 +4146,23 @@ document.addEventListener('submit',e=>{
   else if(form.dataset.form==='signup'){submitSignup();}
   else if(form.dataset.form==='change-password'){changePassword();}
   else if(form.dataset.form==='change-email'){changeEmail();}
+});
+
+// ─── ERROR REPORTING ──────────────────────────────────────────────────────
+// Best-effort — reports surface in Admin > Errors so a bug report like "it
+// crashes" comes with an actual stack trace instead of nothing to go on.
+let clientErrorCount=0;
+function reportClientError(message,stack){
+  if(clientErrorCount>=10) return; // cap per session so a repeating error can't flood the table
+  clientErrorCount++;
+  api('POST','client-errors',{message:String(message||'').slice(0,500),stack:stack?String(stack).slice(0,2000):'',url:location.href}).catch(()=>{});
+}
+window.addEventListener('error',e=>{
+  reportClientError(e.message,e.error&&e.error.stack);
+});
+window.addEventListener('unhandledrejection',e=>{
+  const reason=e.reason;
+  reportClientError('Unhandled promise rejection: '+(reason&&reason.message?reason.message:reason),reason&&reason.stack);
 });
 
 // ─── INIT ─────────────────────────────────────────────────────────────────

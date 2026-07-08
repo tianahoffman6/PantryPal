@@ -8,6 +8,23 @@ const path = require('path');
 
 const app = express();
 app.use(cors());
+// Railway sits behind a proxy — without this, req.ip is the proxy's address for
+// every request, which would make per-IP rate limiting share one bucket for
+// everyone instead of actually limiting individual clients.
+app.set('trust proxy', 1);
+
+// Basic in-memory sliding-window rate limiter. Single-instance deployment, so
+// no shared store needed. Returns true if the caller is over the limit.
+const rateLimitBuckets = new Map();
+function isRateLimited(key, limit, windowMs) {
+  const now = Date.now();
+  let arr = rateLimitBuckets.get(key);
+  if (!arr) { arr = []; rateLimitBuckets.set(key, arr); }
+  while (arr.length && now - arr[0] > windowMs) arr.shift();
+  if (arr.length >= limit) return true;
+  arr.push(now);
+  return false;
+}
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -195,6 +212,17 @@ async function initDB() {
     );
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS client_errors (
+      id SERIAL PRIMARY KEY,
+      family_id INTEGER REFERENCES families(id),
+      message TEXT NOT NULL,
+      stack TEXT,
+      url TEXT,
+      user_agent TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS support_messages (
       id SERIAL PRIMARY KEY,
       family_id INTEGER REFERENCES families(id),
@@ -263,6 +291,9 @@ async function signToken(user) {
 }
 
 app.post('/api/login', async (req, res) => {
+  if (isRateLimited('login:' + req.ip, 10, 5 * 60 * 1000)) {
+    return res.status(429).json({ error: 'Too many login attempts. Please wait a few minutes and try again.' });
+  }
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
   const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
@@ -608,6 +639,38 @@ app.get('/api/recipes/shared', auth, async (req, res) => {
   res.json({ recipes: rows.map(r => r.recipe) });
 });
 
+// No auth required — a crash can happen before login too. If a valid token IS
+// present we attribute the error to that household; otherwise it's still logged
+// so a real bug isn't lost just because we can't identify who hit it.
+app.post('/api/client-errors', async (req, res) => {
+  if (isRateLimited('clienterr:' + req.ip, 20, 60 * 1000)) return res.status(429).json({ error: 'Too many' });
+  const { message, stack, url } = req.body || {};
+  if (!message) return res.status(400).json({ error: 'message required' });
+  let familyId = null;
+  const header = req.headers.authorization;
+  if (header) {
+    try { familyId = jwt.verify(header.replace('Bearer ', ''), JWT_SECRET).familyId; } catch {}
+  }
+  await pool.query(
+    'INSERT INTO client_errors (family_id, message, stack, url, user_agent) VALUES ($1, $2, $3, $4, $5)',
+    [familyId, String(message).slice(0, 2000), stack ? String(stack).slice(0, 4000) : null, url || null, req.headers['user-agent'] || null]
+  );
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/client-errors', auth, async (req, res) => {
+  if (!req.user.isOwnerFamily) return res.status(403).json({ error: 'Owner access only' });
+  const { rows: caller } = await pool.query('SELECT role FROM users WHERE id = $1', [req.user.userId]);
+  if (!caller[0] || caller[0].role !== 'owner') return res.status(403).json({ error: 'Owner access only' });
+  const { rows } = await pool.query(`
+    SELECT ce.id, ce.message, ce.stack, ce.url, ce.user_agent, ce.created_at, f.name AS family_name
+    FROM client_errors ce
+    LEFT JOIN families f ON f.id = ce.family_id
+    ORDER BY ce.created_at DESC LIMIT 200
+  `);
+  res.json({ errors: rows });
+});
+
 // Owner-only: removes a bad/duplicate/test entry from the shared pool so it stops
 // propagating to households that haven't picked it up yet. Does not touch any
 // household's own cookbook copy — each household manages its own copy independently.
@@ -684,6 +747,9 @@ async function sendSupportEmail({ subject, inquiryType, message, fromEmail }) {
 }
 
 app.post('/api/support', auth, async (req, res) => {
+  if (isRateLimited('support:' + req.user.familyId, 5, 60 * 60 * 1000)) {
+    return res.status(429).json({ error: 'Too many messages sent. Please wait a bit before sending another.' });
+  }
   const subject = ((req.body || {}).subject || '').trim();
   const inquiryType = ((req.body || {}).inquiryType || 'Other').trim();
   const message = ((req.body || {}).message || '').trim();
@@ -744,6 +810,9 @@ app.get('/api/admin/usage', auth, async (req, res) => {
 });
 
 app.post('/api/generate-recipe', auth, async (req, res) => {
+  if (isRateLimited('genrecipe:' + req.user.familyId, 20, 60 * 1000)) {
+    return res.status(429).json({ error: 'Too many recipe requests at once. Please wait a moment and try again.' });
+  }
   if (!ANTHROPIC_API_KEY) {
     return res.status(500).json({ error: 'ANTHROPIC_API_KEY is not configured' });
   }
@@ -752,9 +821,13 @@ app.post('/api/generate-recipe', auth, async (req, res) => {
     return res.status(400).json({ error: 'messages array is required' });
   }
 
+  // Flat 1-credit pricing didn't track actual output size — a 6-recipe bulk
+  // generation costs several times what a single side-suggestion does. Charge
+  // by the max_tokens the caller requested as a proxy for call size.
+  const cost = Number(max_tokens) > 2500 ? 2 : 1;
   const { rows: spend } = await pool.query(
-    'UPDATE families SET credits = credits - 1 WHERE id = $1 AND (credits IS NULL OR credits >= 1) RETURNING credits',
-    [req.user.familyId]
+    'UPDATE families SET credits = credits - $2 WHERE id = $1 AND (credits IS NULL OR credits >= $2) RETURNING credits',
+    [req.user.familyId, cost]
   );
   if (!spend.length) return res.status(402).json({ error: 'Out of credits' });
 
