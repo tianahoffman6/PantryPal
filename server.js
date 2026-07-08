@@ -28,6 +28,10 @@ const CREDIT_PACKS = {
   medium: { credits: 150, amountCents: 1200, label: '150 credits — $12' },
   large:  { credits: 500, amountCents: 3500, label: '500 credits — $35' },
 };
+// Claude Sonnet 5 per-million-token pricing, USD. Introductory rate applies through
+// Aug 31 2026 — bump this to { input: 3, output: 15 } after that date.
+// https://platform.claude.com/docs/en/about-claude/pricing
+const CLAUDE_PRICE_PER_MILLION = { input: 2, output: 10 };
 
 // ─── Stripe webhook — MUST be registered before express.json() so the body
 // arrives raw (signature verification needs the exact bytes Stripe signed). ───
@@ -178,6 +182,15 @@ async function initDB() {
       title_key TEXT UNIQUE NOT NULL,
       recipe JSONB NOT NULL,
       origin_family_id INTEGER REFERENCES families(id),
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS api_usage (
+      id SERIAL PRIMARY KEY,
+      family_id INTEGER REFERENCES families(id),
+      input_tokens INTEGER NOT NULL,
+      output_tokens INTEGER NOT NULL,
       created_at TIMESTAMPTZ DEFAULT now()
     );
   `);
@@ -700,6 +713,36 @@ app.get('/api/admin/support-messages', auth, async (req, res) => {
   res.json({ messages: rows });
 });
 
+app.get('/api/admin/usage', auth, async (req, res) => {
+  if (!req.user.isOwnerFamily) return res.status(403).json({ error: 'Owner access only' });
+  const { rows: caller } = await pool.query('SELECT role FROM users WHERE id = $1', [req.user.userId]);
+  if (!caller[0] || caller[0].role !== 'owner') return res.status(403).json({ error: 'Owner access only' });
+
+  const { rows: perFamily } = await pool.query(`
+    SELECT f.id, f.name,
+      COALESCE(SUM(au.input_tokens), 0)::bigint AS input_tokens,
+      COALESCE(SUM(au.output_tokens), 0)::bigint AS output_tokens,
+      COUNT(au.id)::int AS calls
+    FROM families f
+    LEFT JOIN api_usage au ON au.family_id = f.id
+    GROUP BY f.id
+    ORDER BY (COALESCE(SUM(au.input_tokens),0) + COALESCE(SUM(au.output_tokens),0)) DESC
+  `);
+  const costOf = (inputTokens, outputTokens) =>
+    (Number(inputTokens) / 1e6) * CLAUDE_PRICE_PER_MILLION.input +
+    (Number(outputTokens) / 1e6) * CLAUDE_PRICE_PER_MILLION.output;
+  const families = perFamily.map(f => ({ ...f, estimatedCostUsd: costOf(f.input_tokens, f.output_tokens) }));
+  const totals = families.reduce((acc, f) => ({
+    inputTokens: acc.inputTokens + Number(f.input_tokens),
+    outputTokens: acc.outputTokens + Number(f.output_tokens),
+    calls: acc.calls + f.calls,
+    estimatedCostUsd: acc.estimatedCostUsd + f.estimatedCostUsd,
+  }), { inputTokens: 0, outputTokens: 0, calls: 0, estimatedCostUsd: 0 });
+
+  const { rows: revenueRows } = await pool.query('SELECT COALESCE(SUM(amount_cents), 0)::bigint AS total_cents FROM credit_purchases');
+  res.json({ families, totals, revenueUsd: Number(revenueRows[0].total_cents) / 100, pricePerMillion: CLAUDE_PRICE_PER_MILLION });
+});
+
 app.post('/api/generate-recipe', auth, async (req, res) => {
   if (!ANTHROPIC_API_KEY) {
     return res.status(500).json({ error: 'ANTHROPIC_API_KEY is not configured' });
@@ -733,6 +776,12 @@ app.post('/api/generate-recipe', auth, async (req, res) => {
     const data = await response.json();
     if (!response.ok) console.error('Anthropic API error:', response.status, data);
     else if (data.stop_reason && data.stop_reason !== 'end_turn') console.error('Anthropic response cut short:', data.stop_reason);
+    if (data.usage && (data.usage.input_tokens || data.usage.output_tokens)) {
+      pool.query(
+        'INSERT INTO api_usage (family_id, input_tokens, output_tokens) VALUES ($1, $2, $3)',
+        [req.user.familyId, data.usage.input_tokens || 0, data.usage.output_tokens || 0]
+      ).catch(e => console.error('Failed to log api_usage:', e.message));
+    }
     res.status(response.status).json(data);
   } catch (e) {
     res.status(502).json({ error: 'Failed to reach Anthropic API' });

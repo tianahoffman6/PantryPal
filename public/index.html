@@ -646,6 +646,7 @@ let ui={
   householdSubSection:'household', adminSubSection:'onboard', acctEditField:null,
   helpType:'Bug report', helpSubmitting:false, helpSent:false, helpError:'',
   supportMessages:[], supportMessagesLoaded:false,
+  adminUsage:null, adminUsageLoaded:false,
   myUserId:null, myRole:'member', myEmail:'',
   adminFamilies:[], adminLoaded:false, newInviteCode:'', newInviteExpires:'', newInviteLoading:false,
   householdDetailModal:null, householdDetailLoading:false, // {family, members, state}
@@ -1822,11 +1823,15 @@ function renderHeader(){
   const settings=state.settings;
   const avatars=(settings.members||defaultSettings().members).map((m,i)=>
     '<div class="pp-avatar" style="background:'+avatarColor(m)+'">'+h(m)+'</div>').join('');
+  const creditChip=typeof ui.credits==='number'
+    ?'<button class="pill-btn" data-action="open-billing" title="Buy more recipe credits" style="margin-left:8px;'+(ui.credits<=5?'border-color:var(--orange);color:var(--orange);':'')+'">⚡ '+ui.credits+' credit'+(ui.credits===1?'':'s')+'</button>'
+    :'';
   return '<header class="pp-header">'+
     '<div class="pp-logo">pantry<span>pal</span></div>'+
     '<div class="pp-household">'+
       '<span class="pp-household-name">'+h(settings.householdName)+'</span>'+
       '<div class="pp-avatars">'+avatars+'</div>'+
+      creditChip+
       '<button class="btn-icon" data-action="sign-out" title="Sign out" style="margin-left:8px;">⎋</button>'+
     '</div>'+
   '</header>';
@@ -3313,12 +3318,41 @@ function renderSettingsHelp(){
 function renderSettingsAdmin(){
   if(!ui.adminLoaded) loadAdminFamilies();
   if(ui.adminSubSection==='support'&&!ui.supportMessagesLoaded) loadSupportMessages();
-  const subs=[{id:'onboard',label:'Onboard'},{id:'households',label:'All households'},{id:'support',label:'Support inbox'}];
+  if(ui.adminSubSection==='usage'&&!ui.adminUsageLoaded) loadAdminUsage();
+  const subs=[{id:'onboard',label:'Onboard'},{id:'households',label:'All households'},{id:'support',label:'Support inbox'},{id:'usage',label:'Usage'}];
   const subNav=subs.map(s=>'<button class="pill-btn '+(ui.adminSubSection===s.id?'active':'')+'" data-action="set-admin-sub" data-val="'+s.id+'">'+s.label+'</button>').join('');
-  const body=ui.adminSubSection==='households'?renderAdminHouseholds():ui.adminSubSection==='support'?renderAdminSupport():renderAdminOnboard();
+  const body=ui.adminSubSection==='households'?renderAdminHouseholds():ui.adminSubSection==='support'?renderAdminSupport():ui.adminSubSection==='usage'?renderAdminUsage():renderAdminOnboard();
   return '<div class="settings-section-title">Admin</div>'+
     '<div class="settings-nav">'+subNav+'</div>'+
     body;
+}
+
+function renderAdminUsage(){
+  if(!ui.adminUsageLoaded) return '<p style="color:var(--ink-soft);font-size:13px;">Loading…</p>';
+  const u=ui.adminUsage;
+  if(!u) return '<div class="status-card">Couldn\'t load usage data.</div>';
+  const fmtTokens=n=>Number(n)>=1000?(Number(n)/1000).toFixed(1)+'k':String(n);
+  const fmtUsd=n=>'$'+Number(n).toFixed(2);
+  const rows=u.families.filter(f=>f.calls>0).map(f=>
+    '<div class="settings-row">'+
+      '<span style="font-weight:700;">'+h(f.name)+'</span>'+
+      '<span style="color:var(--ink-soft);font-size:12px;">'+f.calls+' call'+(f.calls===1?'':'s')+' · '+fmtTokens(f.input_tokens)+' in / '+fmtTokens(f.output_tokens)+' out · '+fmtUsd(f.estimatedCostUsd)+'</span>'+
+    '</div>'
+  ).join('');
+  const margin=u.revenueUsd-u.totals.estimatedCostUsd;
+  return '<div class="form-card">'+
+      '<div class="field" style="margin-bottom:16px;">'+
+        '<label>Overall (Claude Sonnet 5 — $'+u.pricePerMillion.input+'/$'+u.pricePerMillion.output+' per million tokens in/out)</label>'+
+        '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;">'+
+          '<div><div style="font-size:11px;color:var(--ink-soft);font-weight:800;text-transform:uppercase;">API calls</div><div style="font-size:20px;font-weight:800;">'+u.totals.calls+'</div></div>'+
+          '<div><div style="font-size:11px;color:var(--ink-soft);font-weight:800;text-transform:uppercase;">Tokens in / out</div><div style="font-size:20px;font-weight:800;">'+fmtTokens(u.totals.inputTokens)+' / '+fmtTokens(u.totals.outputTokens)+'</div></div>'+
+          '<div><div style="font-size:11px;color:var(--ink-soft);font-weight:800;text-transform:uppercase;">Estimated Claude cost</div><div style="font-size:20px;font-weight:800;color:var(--orange);">'+fmtUsd(u.totals.estimatedCostUsd)+'</div></div>'+
+          '<div><div style="font-size:11px;color:var(--ink-soft);font-weight:800;text-transform:uppercase;">Stripe revenue</div><div style="font-size:20px;font-weight:800;color:var(--green);">'+fmtUsd(u.revenueUsd)+'</div></div>'+
+          '<div><div style="font-size:11px;color:var(--ink-soft);font-weight:800;text-transform:uppercase;">Margin</div><div style="font-size:20px;font-weight:800;color:'+(margin>=0?'var(--green)':'var(--orange)')+';">'+fmtUsd(margin)+'</div></div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="field"><label>By household</label>'+(rows||'<p style="color:var(--ink-soft);font-size:13px;">No AI usage yet.</p>')+'</div>'+
+    '</div>';
 }
 
 function renderAdminSupport(){
@@ -3463,6 +3497,13 @@ async function loadSupportMessages(){
   ui.supportMessagesLoaded=true;
   const data=await api('GET','admin/support-messages');
   if(data) ui.supportMessages=data.messages;
+  render();
+}
+
+async function loadAdminUsage(){
+  ui.adminUsageLoaded=true;
+  const data=await api('GET','admin/usage');
+  if(data) ui.adminUsage=data;
   render();
 }
 
