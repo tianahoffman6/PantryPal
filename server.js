@@ -100,6 +100,24 @@ async function swapAppStatePrimaryKey() {
   await pool.query('ALTER TABLE app_state ADD PRIMARY KEY (family_id, key)');
 }
 
+// Idempotent: pulls every distinct recipe (by lowercased title) out of every
+// family's existing cookbook into the shared pool. Safe to run on every boot —
+// ON CONFLICT DO NOTHING means it's a no-op once a title has been captured.
+async function backfillSharedRecipes() {
+  const { rows } = await pool.query("SELECT family_id, value FROM app_state WHERE key = 'cookbook'");
+  for (const row of rows) {
+    const recipes = Array.isArray(row.value) ? row.value : [];
+    for (const recipe of recipes) {
+      if (!recipe || !recipe.title || !recipe.title.trim()) continue;
+      const titleKey = recipe.title.trim().toLowerCase();
+      await pool.query(
+        'INSERT INTO shared_recipes (title_key, recipe, origin_family_id) VALUES ($1, $2, $3) ON CONFLICT (title_key) DO NOTHING',
+        [titleKey, JSON.stringify(recipe), row.family_id]
+      );
+    }
+  }
+}
+
 async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS families (
@@ -155,6 +173,15 @@ async function initDB() {
     );
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS shared_recipes (
+      id SERIAL PRIMARY KEY,
+      title_key TEXT UNIQUE NOT NULL,
+      recipe JSONB NOT NULL,
+      origin_family_id INTEGER REFERENCES families(id),
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS admin_audit_log (
       id SERIAL PRIMARY KEY,
       family_id INTEGER REFERENCES families(id),
@@ -172,6 +199,7 @@ async function initDB() {
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ');
   await backfillOwnerFamily();
   await swapAppStatePrimaryKey();
+  await backfillSharedRecipes();
   // Self-healing: families created before roles were assigned correctly get their
   // earliest member promoted to household owner (no-op once every family has one).
   await pool.query(`
@@ -535,6 +563,25 @@ app.put('/api/state/:key', auth, async (req, res) => {
     [req.user.familyId, key, JSON.stringify(req.body)]
   );
   res.json({ ok: true });
+});
+
+// Recipes (both manually created and AI-generated) are shared across every household —
+// each household keeps its own editable copy in their cookbook, but new recipes broadcast
+// here so everyone else picks them up on their next load.
+app.post('/api/recipes/share', auth, async (req, res) => {
+  const recipe = req.body;
+  if (!recipe || !recipe.title || !recipe.title.trim()) return res.status(400).json({ error: 'Recipe needs a title' });
+  const titleKey = recipe.title.trim().toLowerCase();
+  await pool.query(
+    'INSERT INTO shared_recipes (title_key, recipe, origin_family_id) VALUES ($1, $2, $3) ON CONFLICT (title_key) DO NOTHING',
+    [titleKey, JSON.stringify(recipe), req.user.familyId]
+  );
+  res.json({ ok: true });
+});
+
+app.get('/api/recipes/shared', auth, async (req, res) => {
+  const { rows } = await pool.query('SELECT recipe FROM shared_recipes');
+  res.json({ recipes: rows.map(r => r.recipe) });
 });
 
 app.get('/api/credits', auth, async (req, res) => {
