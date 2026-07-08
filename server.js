@@ -584,6 +584,17 @@ app.get('/api/recipes/shared', auth, async (req, res) => {
   res.json({ recipes: rows.map(r => r.recipe) });
 });
 
+// Owner-only: removes a bad/duplicate/test entry from the shared pool so it stops
+// propagating to households that haven't picked it up yet. Does not touch any
+// household's own cookbook copy — each household manages its own copy independently.
+app.delete('/api/recipes/shared', auth, async (req, res) => {
+  if (!req.user.isOwnerFamily) return res.status(403).json({ error: 'Owner access only' });
+  const title = (req.body && req.body.title || '').trim().toLowerCase();
+  if (!title) return res.status(400).json({ error: 'Title required' });
+  await pool.query('DELETE FROM shared_recipes WHERE title_key = $1', [title]);
+  res.json({ ok: true });
+});
+
 app.get('/api/credits', auth, async (req, res) => {
   const { rows } = await pool.query('SELECT credits FROM families WHERE id = $1', [req.user.familyId]);
   res.json({ credits: rows[0] ? rows[0].credits : 0 });
