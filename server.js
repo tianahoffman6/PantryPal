@@ -476,7 +476,9 @@ app.get('/api/admin/families', auth, async (req, res) => {
       COALESCE((SELECT jsonb_array_length(value) FROM app_state WHERE family_id=f.id AND key='inventory' AND jsonb_typeof(value)='array'), 0) AS inventory_count,
       COALESCE((SELECT jsonb_array_length(value) FROM app_state WHERE family_id=f.id AND key='cookbook' AND jsonb_typeof(value)='array'), 0) AS cookbook_count,
       COALESCE((SELECT jsonb_array_length(value) FROM app_state WHERE family_id=f.id AND key='grocery' AND jsonb_typeof(value)='array'), 0) AS grocery_count,
-      COALESCE((SELECT count(*) FROM app_state, jsonb_object_keys(value) WHERE family_id=f.id AND key='planner' AND jsonb_typeof(value)='object'), 0)::int AS planner_days
+      COALESCE((SELECT count(*) FROM jsonb_object_keys(
+        COALESCE((SELECT value FROM app_state WHERE family_id=f.id AND key='planner' AND jsonb_typeof(value)='object'), '{}'::jsonb)
+      )), 0)::int AS planner_days
     FROM families f LEFT JOIN users u ON u.family_id = f.id
     GROUP BY f.id ORDER BY f.created_at ASC
   `);
