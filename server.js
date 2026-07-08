@@ -6,6 +6,13 @@ const crypto = require('crypto');
 const { Pool } = require('pg');
 const path = require('path');
 
+// Express doesn't await async route handlers, so a thrown error inside one becomes
+// an unhandled promise rejection — which crashes the whole process (every household's
+// requests, not just the one that hit the bug) unless we catch it here.
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection in route handler:', err);
+});
+
 const app = express();
 app.use(cors());
 // Railway sits behind a proxy — without this, req.ip is the proxy's address for
@@ -452,7 +459,13 @@ app.delete('/api/account', auth, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('DELETE FROM password_resets WHERE user_id = $1', [req.user.userId]);
+    // Invites reference users by id regardless of the invite's own family_id (e.g. the
+    // new-family invite that created this household has family_id=NULL but points at
+    // one of these users via redeemed_by_user_id) — null those refs out before the
+    // family-scoped invite delete and the user delete, or the FK constraint blocks both.
+    await client.query('UPDATE invites SET created_by_user_id = NULL WHERE created_by_user_id IN (SELECT id FROM users WHERE family_id = $1)', [req.user.familyId]);
+    await client.query('UPDATE invites SET redeemed_by_user_id = NULL WHERE redeemed_by_user_id IN (SELECT id FROM users WHERE family_id = $1)', [req.user.familyId]);
+    await client.query('DELETE FROM password_resets WHERE user_id IN (SELECT id FROM users WHERE family_id = $1)', [req.user.familyId]);
     await client.query('DELETE FROM invites WHERE family_id = $1', [req.user.familyId]);
     await client.query('DELETE FROM support_messages WHERE family_id = $1', [req.user.familyId]);
     await client.query('DELETE FROM api_usage WHERE family_id = $1', [req.user.familyId]);
