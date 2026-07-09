@@ -1363,15 +1363,22 @@ const SEED_RECIPES = [
 {"title":"French Cheese Palmiers","cuisine":"French","mealType":"Snack","totalTimeMinutes":25,"servings":6,"description":"Flaky puff pastry twists baked with parmesan and paprika.","spiceLevel":"Mild","ingredients":[{"name":"puff pastry","quantity":"1 sheet"},{"name":"parmesan cheese","quantity":"1/2 cup grated"},{"name":"paprika","quantity":"1/2 tsp"},{"name":"egg wash","quantity":"1 egg beaten"}],"steps":["Roll out puff pastry on a floured surface.","Sprinkle parmesan and paprika evenly over the pastry.","Roll both edges toward the center to meet in the middle.","Slice into thin rounds and brush with egg wash.","Bake at 400F until golden and puffed, about 15 minutes."],"missingIngredients":[],"usesLowStock":[],"tags":[]}
 ];
 const ALWAYS_HAVE=['salt','pepper','water','oil','olive oil','vegetable oil','cooking oil','baking soda','baking powder','sugar'];
+// Prep/descriptor words that don't actually identify an ingredient — matching on
+// these alone (e.g. "ground" in "ground turkey" vs "Ground Beef") causes false
+// positives, so they're stripped before the word-level fallback match.
+const INGREDIENT_FILLER_WORDS=['ground','fresh','chopped','diced','sliced','minced','cooked','raw','frozen','canned','dried','shredded','grated','crushed','whole','large','small','medium','ripe','boneless','skinless','lean','extra'];
 function invFuzzyMatch(name){
   const n=(name||'').toLowerCase().trim();
   if(!n) return false;
   if(ALWAYS_HAVE.some(s=>n===s||n.includes(s))) return true;
+  const words=n.split(/\s+/).filter(w=>w.length>3&&!INGREDIENT_FILLER_WORDS.includes(w));
   return state.inventory.some(item=>{
     if(isLow(item)) return false;
     const iName=item.name.toLowerCase();
-    return iName.includes(n)||n.includes(iName)||
-      n.split(/\s+/).filter(w=>w.length>3).some(w=>iName.includes(w));
+    if(iName.includes(n)||n.includes(iName)) return true;
+    // Every remaining significant word must appear in THIS SAME item's name —
+    // matching on just one shared word (e.g. both containing "ground") isn't enough.
+    return words.length>0&&words.every(w=>iName.includes(w));
   });
 }
 function recipeAvailability(recipe){
