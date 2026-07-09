@@ -336,9 +336,10 @@ input::placeholder,textarea::placeholder{color:var(--ink-soft);}
 <script>
 // ─── CONSTANTS ────────────────────────────────────────────────────────────
 const LOCATIONS = ['Fridge','Freezer','Pantry','Counter'];
-const MEAL_TYPES_FILTER = ['Any','Breakfast','Lunch','Dinner','Snack','Dessert'];
+const MEAL_TYPES_FILTER = ['Any','Breakfast','Lunch','Dinner','Side Dish','Snack','Dessert'];
 const CUISINES = ['Any','Italian','Mexican','Indian','Chinese','Japanese','Thai','Vietnamese','Korean','Mediterranean','Middle Eastern','French','American','Greek','Spanish','Other'];
-const MEAL_SLOTS = ['Breakfast','Lunch','Dinner','Snack','Dessert'];
+const MEAL_SLOTS = ['Breakfast','Lunch','Dinner','Side Dish','Snack','Dessert'];
+const MAIN_DISH_SLOTS = ['Lunch','Dinner'];
 const SWATCH_COLORS = ['#4F7042','#C2941F','#A23E1C','#8B6914','#2E5A6B','#5A3A7A','#7A3A52','#295C52','#5A5A37','#8C4E14','#6B7160','#3A6E32'];
 const AVATAR_COLORS = ['#4A7C3E','#C4693A','#2E5A6B','#7A3A52','#C2941F','#5A3A7A'];
 // A wider, named palette just for personal accent color — separate from category
@@ -719,7 +720,7 @@ function addMissingToGrocery(idx){
 // Each slot holds an array of recipe titles so more than one dish (e.g. a dinner
 // party) can be planned per meal. Older saved days may still have a plain string —
 // slotMeals() normalizes either shape to an array.
-function getPlannerDay(dateStr){return state.planner[dateStr]||(state.planner[dateStr]={breakfast:[],lunch:[],dinner:[],snack:[],dessert:[]});}
+function getPlannerDay(dateStr){return state.planner[dateStr]||(state.planner[dateStr]={breakfast:[],lunch:[],dinner:[],'side dish':[],snack:[],dessert:[]});}
 function slotMeals(dayData,slot){
   const v=dayData&&dayData[slot.toLowerCase()];
   if(!v) return [];
@@ -1346,7 +1347,7 @@ function renderPlannerModalBody(){
   const showCreate=ui.plannerShowCreate;
 
   // Meal filter pills for narrowing recipe list
-  const mealPills=['All','Breakfast','Lunch','Dinner','Snack','Dessert'].map(m=>
+  const mealPills=['All',...MEAL_SLOTS].map(m=>
     '<button class="pill-btn '+(ui.plannerMealFilter===m?'active':'')+'" data-action="planner-filter-meal" data-val="'+m+'" style="font-size:11px;padding:4px 11px;">'+m+'</button>'
   ).join('');
 
@@ -1405,7 +1406,7 @@ function renderPlannerModalBody(){
       +'</div>'
     :'';
 
-  const mealOpts=['Breakfast','Lunch','Dinner','Snack','Dessert'].map(m=>'<option value="'+m+'" '+(m===slot?'selected':'')+'>'+m+'</option>').join('');
+  const mealOpts=MEAL_SLOTS.map(m=>'<option value="'+m+'" '+(m===slot?'selected':'')+'>'+m+'</option>').join('');
   const cuisineOpts=state.settings.cuisines.map(c=>'<option value="'+h(c)+'">'+h(c)+'</option>').join('');
   const createForm=showCreate
     ?'<div style="background:var(--bg);border-radius:12px;padding:16px;border:1.5px solid var(--border);margin-bottom:14px;">'+
@@ -2193,8 +2194,8 @@ function renderHome(){
   const dayFull=today.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'});
   const name=state.settings.householdName||'';
 
-  // Snack/Dessert cards only show up once something's actually planned, so an
-  // ordinary day still looks like the original 3-card Breakfast/Lunch/Dinner view.
+  // Side Dish/Snack/Dessert cards only show up once something's actually planned,
+  // so an ordinary day still looks like the original 3-card Breakfast/Lunch/Dinner view.
   const CORE_SLOTS=['Breakfast','Lunch','Dinner'];
   const slotsToShow=MEAL_SLOTS.filter(slot=>CORE_SLOTS.includes(slot)||slotMeals(dayData,slot).length);
   const mealCards=slotsToShow.map(slot=>{
@@ -2351,15 +2352,42 @@ function renderCookingModal(){
   if(!root) return;
   if(!ui.cookingModal){root.innerHTML='';return;}
 
-  const{date,slot,meal,checklist,generating,generatedRecipe,error}=ui.cookingModal;
+  const{date,slot,meal,checklist,generating,generatedRecipe,error,sideDishGenerating,sideDishSuggestion,sideDishError}=ui.cookingModal;
   const emoji=SLOT_EMOJI[slot]||'';
   const cbRecipe=state.cookbook.find(r=>r.title.toLowerCase()===meal.toLowerCase());
   const recipe=generatedRecipe||cbRecipe;
+  const isMainDish=MAIN_DISH_SLOTS.includes(slot);
 
   let body='',footer='';
   const footerBase=
     '<button class="btn btn-secondary" data-action="change-meal" data-date="'+h(date)+'" data-slot="'+h(slot)+'" data-meal="'+h(meal)+'">Change meal</button>'+
+    (isMainDish&&!sideDishGenerating?'<button class="btn btn-secondary" data-action="generate-side-dish">🥗 Suggest a side dish</button>':'')+
     '<button class="btn btn-secondary" data-action="close-cooking-modal">Done</button>';
+
+  let sideDishHtml='';
+  if(isMainDish&&!generating){
+    if(sideDishGenerating){
+      sideDishHtml='<div class="cooking-section-label">🥗 Side dish</div>'+
+        '<div style="text-align:center;padding:16px 0;">'+
+          '<div class="spinner" style="margin:0 auto 10px;width:20px;height:20px;border-width:2px;"></div>'+
+          '<div style="font-size:13px;font-weight:700;color:var(--ink-soft);">Finding a side dish for "'+h(meal)+'"…</div>'+
+        '</div>';
+    } else if(sideDishSuggestion){
+      const sd=sideDishSuggestion;
+      sideDishHtml='<div class="cooking-section-label">🥗 Side dish suggestion</div>'+
+        '<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;">'+
+          '<div style="font-weight:800;font-size:14px;margin-bottom:2px;">'+h(sd.title)+'</div>'+
+          (sd.description?'<div style="font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:10px;line-height:1.4;">'+h(sd.description)+'</div>':'')+
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
+            '<button class="btn btn-secondary" data-action="save-side-dish" style="font-size:12px;padding:7px 12px;">🔖 Save to cookbook</button>'+
+            '<button class="btn btn-primary" data-action="add-side-dish-to-planner" style="font-size:12px;padding:7px 12px;">📅 Add as side dish</button>'+
+            '<button class="btn btn-ghost" data-action="dismiss-side-dish" style="font-size:12px;padding:7px 12px;">Discard</button>'+
+          '</div>'+
+        '</div>';
+    } else if(sideDishError){
+      sideDishHtml='<div class="error-card" style="margin-top:10px;">'+h(sideDishError)+'</div>';
+    }
+  }
 
   if(generating){
     body='<div class="cooking-body" style="text-align:center;padding:40px 22px;">'+
@@ -2389,7 +2417,7 @@ function renderCookingModal(){
 
     body='<div class="cooking-body">'+
       (recipe.description?'<p style="color:var(--ink-soft);font-size:14px;font-weight:600;margin-bottom:2px;line-height:1.5;">'+h(recipe.description)+'</p>':'')+
-      ingHtml+stepsHtml+
+      ingHtml+stepsHtml+sideDishHtml+
       (error?'<div class="error-card" style="margin-top:14px;">'+h(error)+'</div>':'')+
     '</div>';
 
@@ -2408,6 +2436,7 @@ function renderCookingModal(){
           '<button class="btn btn-primary" data-action="generate-meal-recipe" style="padding:14px;font-size:14px;">✦ Generate recipe with what I have</button>'+
         '</div>'+
       '</div>'+
+      sideDishHtml+
       (error?'<div class="error-card" style="margin-top:14px;">'+h(error)+'</div>':'')+
     '</div>';
     footer='<div class="cooking-footer">'+footerBase+'</div>';
@@ -2453,8 +2482,36 @@ async function generateRecipeForMeal(){
   renderCookingModal();
 }
 
+async function generateSideDish(){
+  const modal=ui.cookingModal;
+  if(!modal) return;
+  modal.sideDishGenerating=true;
+  modal.sideDishError='';
+  modal.sideDishSuggestion=null;
+  renderCookingModal();
+  const inventory=state.inventory.map(i=>i.name+(i.quantity?' ('+i.quantity+(i.unit?' '+h(i.unit):'')+')':'')).join(', ');
+  const system='You are a recipe generator. Given a main dish and the user\'s kitchen inventory, suggest exactly ONE complementary side dish (a vegetable, starch, salad, or bread) that pairs well with it, using as many available ingredients as possible. Respond ONLY with a raw JSON object (no markdown, no code fences): {"title":string,"cuisine":string,"mealType":"Side Dish","totalTimeMinutes":number,"servings":number,"description":string,"spiceLevel":string,"ingredients":[{"name":string,"quantity":string,"have":boolean}],"steps":[string],"missingIngredients":[string],"tags":[string]}. Mark have:true if the ingredient fuzzy-matches the inventory. Assume salt, pepper, oil, and water are always available. Keep steps to 3-5 clear imperative sentences.';
+  try{
+    const data=await api('POST','generate-recipe',{max_tokens:1200,system,
+      messages:[{role:'user',content:'Main dish: "'+modal.meal+'"\n\nKitchen inventory: '+inventory+'\n\nSuggest one side dish to serve alongside it.'}]});
+    if(!data) throw new Error('request failed');
+    let text=(data.content||[]).find(b=>b.type==='text')?.text||'';
+    text=text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+    const recipe=JSON.parse(text);
+    if(!recipe.title) throw new Error('empty');
+    modal.sideDishSuggestion={...recipe,mealType:'Side Dish',id:uid(),dateAdded:new Date().toISOString(),usesLowStock:[]};
+    modal.sideDishGenerating=false;
+    noteCreditSpent();
+  }catch(e){
+    console.error(e);
+    modal.sideDishGenerating=false;
+    modal.sideDishError=lastApiStatus===402?'You\'re out of AI credits. Buy more in Settings → Family & Billing.':'Couldn\'t generate a side dish right now. Try again.';
+  }
+  renderCookingModal();
+}
 
-const SLOT_EMOJI={'Breakfast':'🌅','Lunch':'🍳','Dinner':'🌙','Snack':'🍿','Dessert':'🍰'};
+
+const SLOT_EMOJI={'Breakfast':'🌅','Lunch':'🍳','Dinner':'🌙','Side Dish':'🥗','Snack':'🍿','Dessert':'🍰'};
 
 async function generateRandomRecipes(){
   ui.generatingRandom=true;
@@ -2566,7 +2623,7 @@ function renderPlanner(){
   }).join('');
 
   // Recipe Browser section
-  const mealPills=['All','Breakfast','Lunch','Dinner','Snack','Dessert'].map(m=>
+  const mealPills=['All',...MEAL_SLOTS].map(m=>
     '<button class="pill-btn '+(ui.browserMealFilter===m?'active':'')+'" data-action="set-browser-meal" data-val="'+m+'">'+m+'</button>').join('');
 
   const browser='<div class="recipe-browser-section">'+
@@ -3268,7 +3325,7 @@ document.addEventListener('click',e=>{
     case 'open-planner-modal':
       ui.plannerModal={date:a.date,slot:a.slot,mode:'add'};
       ui.plannerSearch='';ui.plannerShowCreate=false;ui.plannerShowLimit=40;
-      ui.plannerMealFilter= a.slot==='Breakfast'?'Breakfast':a.slot==='Lunch'?'Lunch':a.slot==='Dinner'?'Dinner':a.slot==='Snack'?'Snack':a.slot==='Dessert'?'Dessert':'All';
+      ui.plannerMealFilter=MEAL_SLOTS.includes(a.slot)?a.slot:'All';
       renderModal();break;
     case 'planner-filter-meal': ui.plannerMealFilter=a.val; ui.plannerShowLimit=40; partialUpdate('planner-modal-body',renderPlannerModalBody()); break;
     case 'planner-show-more': ui.plannerShowLimit=(ui.plannerShowLimit||40)+40; partialUpdate('planner-modal-body',renderPlannerModalBody()); break;
@@ -3321,7 +3378,8 @@ document.addEventListener('click',e=>{
     case 'add-week-missing': addWeekMissingToGrocery();break;
     // cooking mode
     case 'open-cooking-mode':
-      ui.cookingModal={date:a.date,slot:a.slot,meal:a.meal,checklist:{},generating:false,generatedRecipe:null,error:''};
+      ui.cookingModal={date:a.date,slot:a.slot,meal:a.meal,checklist:{},generating:false,generatedRecipe:null,error:'',
+        sideDishGenerating:false,sideDishSuggestion:null,sideDishError:''};
       renderCookingModal();break;
     case 'close-cooking-modal':
       ui.cookingModal=null;renderCookingModal();break;
@@ -3335,6 +3393,23 @@ document.addEventListener('click',e=>{
         ui.cookingModal.generatedRecipe=null; // it's now in cookbook; next open will find it
         renderCookingModal();render();
       }break;
+    case 'generate-side-dish':
+      if(ui.cookingModal) generateSideDish();break;
+    case 'save-side-dish':
+      if(ui.cookingModal&&ui.cookingModal.sideDishSuggestion){
+        saveRecipe(ui.cookingModal.sideDishSuggestion);
+        renderCookingModal();render();
+      }break;
+    case 'add-side-dish-to-planner':
+      if(ui.cookingModal&&ui.cookingModal.sideDishSuggestion){
+        const sd=ui.cookingModal.sideDishSuggestion;
+        const sideDate=ui.cookingModal.date;
+        ui.cookingModal.sideDishSuggestion=null;
+        saveRecipe(sd);
+        addPlannerMeal(sideDate,'Side Dish',sd.title);
+      }break;
+    case 'dismiss-side-dish':
+      if(ui.cookingModal){ui.cookingModal.sideDishSuggestion=null;ui.cookingModal.sideDishError='';renderCookingModal();}break;
     case 'add-recipe-for-meal':
       // Open the planner recipe picker with create form pre-filled — this edits the
       // already-planned title in place rather than adding a second entry for it
@@ -3346,7 +3421,7 @@ document.addEventListener('click',e=>{
       ui.cookingModal=null;renderCookingModal();
       ui.plannerModal={date:a.date,slot:a.slot,mode:'replace',oldTitle:a.meal};
       ui.plannerSearch='';ui.plannerShowCreate=false;ui.plannerShowLimit=40;
-      ui.plannerMealFilter=a.slot==='Breakfast'?'Breakfast':a.slot==='Lunch'?'Lunch':a.slot==='Dinner'?'Dinner':'All';
+      ui.plannerMealFilter=MEAL_SLOTS.includes(a.slot)?a.slot:'All';
       renderModal();break;
     // recipe browser (within planner tab)
     case 'generate-random-recipes': if(!ui.generatingRandom) generateRandomRecipes();break;
