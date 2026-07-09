@@ -1362,6 +1362,15 @@ const SEED_RECIPES = [
 {"title":"Mexican Chili Lime Jicama Sticks","cuisine":"Mexican","mealType":"Snack","totalTimeMinutes":10,"servings":4,"description":"Crisp jicama sticks dusted with chili powder and lime.","spiceLevel":"Medium","ingredients":[{"name":"jicama","quantity":"1 peeled and sliced"},{"name":"lime","quantity":"2"},{"name":"chili powder","quantity":"1 tsp"},{"name":"salt","quantity":"1/2 tsp"},{"name":"tajin seasoning","quantity":"1 tsp"}],"steps":["Slice jicama into thin matchstick pieces.","Squeeze lime juice generously over the sticks.","Sprinkle with chili powder and tajin seasoning.","Toss well to coat evenly with seasoning.","Serve chilled on a platter."],"missingIngredients":[],"usesLowStock":[],"tags":[]},
 {"title":"French Cheese Palmiers","cuisine":"French","mealType":"Snack","totalTimeMinutes":25,"servings":6,"description":"Flaky puff pastry twists baked with parmesan and paprika.","spiceLevel":"Mild","ingredients":[{"name":"puff pastry","quantity":"1 sheet"},{"name":"parmesan cheese","quantity":"1/2 cup grated"},{"name":"paprika","quantity":"1/2 tsp"},{"name":"egg wash","quantity":"1 egg beaten"}],"steps":["Roll out puff pastry on a floured surface.","Sprinkle parmesan and paprika evenly over the pastry.","Roll both edges toward the center to meet in the middle.","Slice into thin rounds and brush with egg wash.","Bake at 400F until golden and puffed, about 15 minutes."],"missingIngredients":[],"usesLowStock":[],"tags":[]}
 ];
+const RATING_LABELS={1:'Wouldn\'t make again',2:'Probably not',3:'Good',4:'Really good',5:'Family favorite'};
+function renderRatingStars(recipeId,rating,interactive){
+  const stars=[1,2,3,4,5].map(n=>
+    (interactive?'<button type="button" class="btn-ghost" data-action="rate-recipe" data-id="'+recipeId+'" data-val="'+n+'" title="'+RATING_LABELS[n]+'" style="padding:2px;font-size:'+(interactive?'20px':'12px')+';line-height:1;color:'+(rating>=n?'var(--gold)':'var(--border)')+';">':'<span style="font-size:12px;color:'+(rating>=n?'var(--gold)':'var(--border)')+';">')+
+    (rating>=n?'★':'☆')+
+    (interactive?'</button>':'</span>')
+  ).join('');
+  return stars;
+}
 const ALWAYS_HAVE=['salt','pepper','water','oil','olive oil','vegetable oil','cooking oil','baking soda','baking powder','sugar'];
 // Prep/descriptor words that don't actually identify an ingredient — matching on
 // these alone (e.g. "ground" in "ground turkey" vs "Ground Beef") causes false
@@ -1815,6 +1824,14 @@ function renderRecipeViewModal(){
     ?'<button class="btn-icon" data-action="add-cookbook-missing" data-id="'+r.id+'" style="color:var(--green);border-color:var(--green);">🛒 Add '+avail.missing+' missing</button>'
     :'';
 
+  const ratingRow='<div style="margin:12px 0;padding:10px 12px;background:var(--bg);border-radius:10px;">'+
+    '<div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);margin-bottom:4px;">Tried it? Rate it</div>'+
+    '<div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;">'+
+      renderRatingStars(r.id,r.rating||0,true)+
+      (r.rating?'<span style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-left:8px;">'+RATING_LABELS[r.rating]+'</span><button type="button" class="btn-ghost" data-action="clear-recipe-rating" data-id="'+r.id+'" style="margin-left:6px;font-size:11px;">Clear</button>':'')+
+    '</div>'+
+  '</div>';
+
   return (
     '<div class="modal-overlay" id="pp-modal-overlay">'+
       '<div class="modal-sheet'+(large?' modal-sheet-large':'')+'">'+
@@ -1829,7 +1846,7 @@ function renderRecipeViewModal(){
           (r.servings?'<span style="font-size:12px;color:var(--ink-soft);font-weight:700;">👤 '+r.servings+'</span>':'')+
           spiceBadge+
         '</div>'+
-        availBar+ingSection+stepsSection+
+        availBar+ratingRow+ingSection+stepsSection+
         '<div class="cb-actions" style="flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">'+
           '<button class="btn-icon" data-action="toggle-cb-fav-item" data-id="'+r.id+'" title="'+(r.favorite?'Remove from favorites':'Add to favorites')+'" style="'+(r.favorite?'color:var(--gold);border-color:var(--gold);':'color:var(--ink-soft);')+'">'+(r.favorite?'⭐':'☆')+'</button>'+
           addMissingBtn+
@@ -2549,6 +2566,7 @@ function renderCbCard(r){
         '<div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-bottom:6px;">'+
           [r.cuisine,r.mealType].filter(Boolean).map(h).join(' · ')+
         '</div>'+
+        (r.rating?'<div style="margin-bottom:6px;" title="'+RATING_LABELS[r.rating]+'">'+renderRatingStars(r.id,r.rating,false)+'</div>':'')+
         (r.description?'<div style="font-size:13px;color:var(--ink-soft);margin-bottom:8px;line-height:1.4;">'+h(r.description)+'</div>':'')+
         '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'+
           (r.totalTimeMinutes?'<span style="font-size:12px;color:var(--ink-soft);font-weight:700;">⏱ '+r.totalTimeMinutes+' min</span>':'')+
@@ -4015,6 +4033,8 @@ document.addEventListener('click',e=>{
     case 'toggle-cb-can-make': ui.cbCanMake=!ui.cbCanMake;render();break;
     case 'toggle-cb-fav': ui.cbFav=!ui.cbFav;render();break;
     case 'toggle-cb-fav-item':{const r=state.cookbook.find(x=>x.id===a.id);if(r){r.favorite=!r.favorite;saveCookbook();render();}}break;
+    case 'rate-recipe':{const r=state.cookbook.find(x=>x.id===a.id);if(r){r.rating=Number(a.val);saveCookbook();render();}}break;
+    case 'clear-recipe-rating':{const r=state.cookbook.find(x=>x.id===a.id);if(r){delete r.rating;saveCookbook();render();}}break;
     case 'add-cookbook-missing': addCookbookMissingToGrocery(a.id);break;
     // recipe view modal (used from the cookbook and the planner's recipe browser)
     case 'open-recipe-view':{
